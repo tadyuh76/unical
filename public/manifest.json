@@ -1,0 +1,66 @@
+{
+  "manifest_version": 3,
+  "name": "UniCal",
+  "version": "2.0.0",
+  "description": "UEH class schedules, exams and LMS deadlines in Google Calendar, kept up to date automatically.",
+  "homepage_url": "https://unical.tadyuh.dev",
+  "action": {
+    "default_popup": "index.html",
+    "default_icon": {
+      "16": "logo/logo-16.png",
+      "24": "logo/logo-24.png",
+      "32": "logo/logo-32.png",
+      "48": "logo/logo-48.png",
+      "64": "logo/logo-64.png",
+      "128": "logo/logo-128.png"
+    }
+  },
+  "icons": {
+    "16": "logo/logo-16.png",
+    "24": "logo/logo-24.png",
+    "32": "logo/logo-32.png",
+    "48": "logo/logo-48.png",
+    "64": "logo/logo-64.png",
+    "128": "logo/logo-128.png",
+    "512": "logo/logo-512.png"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": [
+    "storage",
+    "identity",
+    "alarms",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "https://student.ueh.edu.vn/*",
+    "https://lms.ueh.edu.vn/*",
+    "https://loginst.ueh.edu.vn/*",
+    "https://www.googleapis.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://student.ueh.edu.vn/*",
+        "https://lms.ueh.edu.vn/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "logo/logo-64.png"
+      ],
+      "matches": [
+        "https://student.ueh.edu.vn/*",
+        "https://lms.ueh.edu.vn/*"
+      ]
+    }
+  ]
+}
