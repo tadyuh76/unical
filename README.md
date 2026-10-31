@@ -29,7 +29,7 @@ Trong Google Calendar sẽ có 3 lịch riêng. Tắt một lịch trong UniCal 
 - Deadline đã nộp được đánh dấu ✓ và tắt nhắc nhở.
 - Lịch thi nhắc lúc 20:00 tối hôm trước và 1 giờ trước giờ thi. Deadline nhắc trước 1 ngày và 2 giờ.
 - Phiên UEH Student hoặc LMS hết hạn: UniCal mở phiên mới qua trang đăng nhập của UEH (nút "Tiếp tục"), không bao giờ thấy hay dùng mật khẩu. Nếu UEH đã đăng xuất hẳn, UniCal nhắc bạn đăng nhập lại; deadline vẫn về qua link lịch riêng của LMS.
-- Biểu tượng tiện ích hiện số deadline trong 3 ngày tới, hoặc "!" khi cần đăng nhập lại UEH hay kết nối lại Google.
+- Biểu tượng tiện ích (ghim UniCal lên thanh công cụ để thấy) hiện số deadline trong 3 ngày tới, hoặc "!" khi cần đăng nhập lại UEH, kết nối lại Google, lịch chưa cập nhật 3 ngày, hay Google từ chối đồng bộ suốt một ngày.
 - Dùng Apple Calendar, Outlook, Notion Calendar: thêm tài khoản Google vào app, hoặc tải file `.ics` trong UniCal.
 
 Chạy trên Chrome, Brave, Edge, Cốc Cốc và các trình duyệt Chromium khác.
