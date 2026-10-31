@@ -25,6 +25,9 @@ export interface State {
   problem: "" | "auth" | "google" | "scope";
   nudged: number;
   login: Partial<Record<Site, boolean>>; // UEH signed the student out of this site completely
+  busy: number; // when the running read/sync started, 0 when idle
+  who: Partial<Record<Site, string>>; // whose UEH data this is: student number, LMS user id
+  doubt: Record<string, number>; // "classes|2026HKC" -> when a read first came back empty for a term with things ahead
 }
 
 export const DEFAULTS: State = {
@@ -39,6 +42,9 @@ export const DEFAULTS: State = {
   problem: "",
   nudged: 0,
   login: {},
+  busy: 0,
+  who: {},
+  doubt: {},
 };
 
 export async function load(): Promise<State> {
@@ -54,3 +60,12 @@ export const SOURCES: Source[] = ["classes", "exams", "deadlines"];
 export const atLocal = (local: string) => Date.parse(`${local}:00+07:00`);
 export const toLocal = (ms: number) =>
   new Date(ms + 7 * 3600_000).toISOString().slice(0, 16);
+
+// UEH signed the student out of a site completely: only they can sign back in. Deadlines keep coming
+// through the private LMS link while it works, so the LMS only matters without it.
+export function signInNeeded({ login, settings, feed }: Pick<State, "login" | "settings" | "feed">): string[] {
+  return [
+    login.portal && (settings.classes || settings.exams) && "UEH Student",
+    login.lms && settings.deadlines && !feed && "LMS",
+  ].filter((x): x is string => Boolean(x));
+}

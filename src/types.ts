@@ -56,6 +56,7 @@ export interface Deadline {
 
 // What the student portal page hands to the background worker.
 export interface PortalPayload {
+  who: string; // the signed-in student's number, "" if the page didn't show it
   terms: string[]; // terms fully read this round, e.g. ["2026HKC", "2027HKD"]
   exams?: Exam[];
   classes?: { sessions: ClassSession[]; from: Record<string, string> }; // from: first day read per term
@@ -73,6 +74,7 @@ export interface LmsEvent {
 }
 
 export interface LmsPayload {
+  who: string; // the signed-in LMS user's id, "" if the page didn't show it
   events: LmsEvent[];
   from: number;
   to: number;
@@ -89,7 +91,8 @@ export interface Plan {
 export interface SyncReport {
   changed: Record<Source, number>;
   connected: boolean;
-  nudge: boolean; // ask the student to connect Google Calendar
+  nudge: boolean; // ask the student to connect Google Calendar (again, when `lost`)
+  lost?: boolean; // Google access ended: the calendar has stopped updating
 }
 
 // What a background read of one site comes back with: what it read, or that UEH wants the student to sign in.

@@ -10,6 +10,12 @@ const HUB = "https://loginst.ueh.edu.vn"; // UEH's login page for students, shar
 // The portal or LMS session has lapsed.
 export class Expired extends Error {}
 
+// UEH answers a student's requests one at a time, so UniCal's reads must never hold up the student's own
+// clicks. Opening a portal page reads only on the home page, timetable, exams and profile, and while a
+// registration page is open (course registration, sign-ups), UniCal leaves the portal alone altogether.
+export const CALM = /^\/(home(\/(index|schedules|exam|info))?)?\/?$/i;
+export const REGISTERING = /^\/home\/(dangky|ghidanh|regist)/i;
+
 // ---- Helpers ----
 
 const parseHtml = (html: string) =>
@@ -38,23 +44,6 @@ function addDays(date: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-async function pool<T, R>(
-  items: T[],
-  size: number,
-  fn: (item: T) => Promise<R>
-): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const i = next++;
-      out[i] = await fn(items[i]!);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(size, items.length) }, worker));
-  return out;
-}
-
 // A GET with the student's UEH cookies. Ending up anywhere but the page asked for (the login hub, or
 // Moodle's sign-in page) means the session has lapsed.
 async function get(origin: string, path: string, init: RequestInit = {}): Promise<string> {
@@ -66,6 +55,18 @@ async function get(origin: string, path: string, init: RequestInit = {}): Promis
 
 const roomId = (room: string) => room.replace(/\s*\(.*\)\s*$/, "").trim();
 
+// Without accents, spaces or case: the portal spells one place differently on different pages
+// ("Bãi 1" in the week grid, "Bai1" in the term overview).
+const plain = (value: string) =>
+  value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/gi, "d").replace(/\s+/g, " ").trim().toLowerCase();
+const roomKey = (room: string) => plain(roomId(room)).replace(/ /g, "");
+
+// Today and this week's Monday, Vietnam time.
+function thisMonday(): string {
+  const today = new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
+  return addDays(today, -((new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7));
+}
+
 // ---- Student portal ----
 
 const nextTerm = ({ year, term }: Term): Term =>
@@ -75,35 +76,58 @@ const nextTerm = ({ year, term }: Term): Term =>
       ? { year, term: "HKC" }
       : { year: String(Number(year) + 1), term: "HKD" };
 
-async function currentTerm(): Promise<Term | null> {
+const prevTerm = ({ year, term }: Term): Term =>
+  term === "HKC"
+    ? { year, term: "HKG" }
+    : term === "HKG"
+      ? { year, term: "HKD" }
+      : { year: String(Number(year) - 1), term: "HKC" };
+
+// The term the timetable page opens on, and the student signed in (their number heads the account menu).
+async function currentTerm(): Promise<{ term: Term; who: string } | null> {
   const doc = parseHtml(await get(PORTAL, "/Home/Schedules"));
   const year = doc.querySelector<HTMLSelectElement>("#YearStudy")?.value;
   const term = doc.querySelector<HTMLSelectElement>("#TermID")?.value;
-  return year && term ? { year, term } : null;
+  const who = text(doc.querySelector("a[data-toggle=dropdown] span")).match(/\d{8,}/)?.[0] ?? "";
+  return year && term ? { term: { year, term }, who } : null;
 }
 
-// Whole-term view: used for campus addresses and to skip terms without classes.
+// Whole-term view: campus addresses, and the first and last day with classes ("Tuần" column), so only
+// the weeks in between need reading.
 function readTermOverview(html: string) {
   const addresses = new Map<string, string>();
   let sessions = 0;
+  let first = "";
+  let last = "";
   parseHtml(html)
     .querySelectorAll("tbody tr")
     .forEach((tr) => {
       const cells = Array.from(tr.querySelectorAll("td")).map(text);
       if (cells.length < 6) return;
-      const [day, , room, , campus, address] = cells.slice(-6) as string[];
+      const [day, , room, span, campus, address] = cells.slice(-6) as string[];
       if (day) sessions++;
+      for (const [d] of span!.matchAll(/\d{1,2}\/\d{1,2}\/\d{4}/g)) {
+        const date = isoDate(d);
+        if (!first || date < first) first = date;
+        if (date > last) last = date;
+      }
       const clean = address!.replace(/\s*\[Địa chỉ cũ:[^\]]*\]/i, "").trim();
-      if (!/\d/.test(clean) || /online|lms/i.test(campus!)) return;
-      if (room) addresses.set(roomId(room), clean);
-      if (campus) addresses.set(campus, clean);
+      // Not a place: online, LMS, called off ("Nghỉ"), extracurricular ("Ngoại khóa").
+      if (!clean || /\b(online|lms|nghi)\b|ngoai ?khoa/.test(plain(`${campus} ${clean}`))) return;
+      // A bare district (the defence-training centre's "Thủ Đức") reads better with the campus name.
+      const place = /\d/.test(clean) ? clean : [campus, clean].filter(Boolean).join(", ");
+      if (room) addresses.set(roomKey(room), place);
+      if (campus) addresses.set(campus, place);
     });
-  return { addresses, sessions };
+  return { addresses, sessions, first, last };
 }
 
+// Both of the page's tables (upcoming, and all with their status); an exam UEH excused the student from
+// ("Đã duyệt" on their absence request) is left out.
 function parseExams(html: string, term: string): Exam[] | null {
   if (!/<table/i.test(html)) return null;
   const exams = new Map<string, Exam>();
+  const excused = new Set<string>();
   parseHtml(html)
     .querySelectorAll("table tbody tr")
     .forEach((row) => {
@@ -130,7 +154,9 @@ function parseExams(html: string, term: string): Exam[] | null {
       };
       exam.key = `${term}|${exam.lhp}|${exam.attempt}|${exam.kind}`;
       exams.set(exam.key, exam);
+      if (c.length >= 12 && /^đã duyệt/i.test(text(c[10])) && !/xin vắng/i.test(text(c[11]))) excused.add(exam.key);
     });
+  excused.forEach((key) => exams.delete(key));
   return [...exams.values()];
 }
 
@@ -153,10 +179,9 @@ function columns(table: Element): Map<Element, number> {
   return map;
 }
 
-function parseWeek(
-  html: string,
-  term: string
-): { monday: string; sessions: ClassSession[] } | null {
+type Week = { monday: string; sessions: ClassSession[] };
+
+function parseWeek(html: string, term: string): Week | null {
   const doc = parseHtml(html);
   const table = doc.querySelector("table.MainTb");
   const monday = isoDate(text(doc.querySelector(".config-alert")));
@@ -207,8 +232,9 @@ function parseWeek(
 }
 
 export async function readPortal(plan: Plan): Promise<PortalPayload | null> {
-  const current = await currentTerm();
-  if (!current) return null;
+  const opened = await currentTerm();
+  if (!opened) return null;
+  const current = opened.term;
   const terms = [current, nextTerm(current)];
   const ids = terms.map((t) => t.year + t.term);
   const query = (t: Term) => `YearStudy=${t.year}&TermID=${t.term}`;
@@ -221,20 +247,24 @@ export async function readPortal(plan: Plan): Promise<PortalPayload | null> {
   const addresses = new Map<string, string>();
   overviews.forEach((o) => o.addresses.forEach((v, k) => addresses.set(k, v)));
   const addressOf = (room: string, campus = "") =>
-    addresses.get(roomId(room)) ?? addresses.get(campus) ?? "";
+    addresses.get(roomKey(room)) ?? addresses.get(campus) ?? "";
 
-  const payload: PortalPayload = { terms: ids };
+  // Exams also from the term before: its exams can run weeks into the portal's next term.
+  const examTerms = [prevTerm(current), ...terms];
+  const payload: PortalPayload = { who: opened.who, terms: examTerms.map((t) => t.year + t.term) };
 
   if (plan.exams) {
     const lists = await Promise.all(
-      terms.map(async (t, i) =>
-        parseExams(await get(PORTAL, `/Home/ShowExam?${query(t)}`), ids[i]!)
-      )
+      examTerms.map(async (t) => parseExams(await get(PORTAL, `/Home/ShowExam?${query(t)}`), t.year + t.term))
     );
     if (lists.every(Boolean)) {
+      // An exam room the term's classes never used has no address there; the exam row's own note then
+      // carries the campus address (or, for online exams, a note about the "virtual campus").
+      const noted = (e: Exam) =>
+        /\d/.test(e.note) && !/co so ao/.test(plain(e.note)) ? e.note.replace(/\s*\[Địa chỉ cũ:[^\]]*\]/i, "").trim() : "";
       payload.exams = lists
         .flat()
-        .map((e) => ({ ...e!, address: addressOf(e!.room, e!.campus) }));
+        .map((e) => ({ ...e!, address: addressOf(e!.room, e!.campus) || noted(e!) }));
     }
   }
 
@@ -247,24 +277,45 @@ export async function readPortal(plan: Plan): Promise<PortalPayload | null> {
         from[id] = "";
         continue;
       }
-      const weeks: { Week: number; WeekOfYear: number }[] = JSON.parse(
+      const weeks: { Week: number; DisPlayWeek: number }[] = JSON.parse(
         await get(PORTAL, `/Home/GetWeek/${t.year}$${t.term}`)
       );
-      const start = Math.max(
-        0,
-        weeks.findIndex((w) => w.Week === weeks[0]?.WeekOfYear)
-      );
-      // Week numbers repeat when a term's list runs past a year; each week is read once.
-      const unique = weeks.slice(start).filter((w, i, all) => all.findIndex((x) => x.Week === w.Week) === i);
-      const pages = await pool(unique, 4, async (w) =>
-        parseWeek(await get(PORTAL, `/Home/DrawingSchedules?${query(t)}&Week=${w.Week}`), id)
-      );
-      if (pages.some((p) => !p)) return payload;
-      from[id] = pages[0]?.monday ?? "";
+      // Week numbers repeat when a term's list runs past a year (the spring term's runs December to
+      // December); the portal only serves the first of each, so each is read once.
+      const unique = weeks.filter((w, i, all) => all.findIndex((x) => x.Week === w.Week) === i);
+      // The current term is read from this week on (what's past stays as it was), the next one whole.
+      // Dates, not week numbers, decide: the list's "WeekOfYear" is just today's week number.
+      const since = i === 0 ? thisMonday() : "";
+      // One page at a time: UEH answers a student's requests one by one anyway, and in parallel they're slower.
+      // The term's weeks run back to back, so the first page dates the rest, and the weeks outside the
+      // term's class days are skipped. Should a page's date say otherwise, every week is read instead.
+      const { first, last } = overviews[i]!;
+      const lo = since > first ? since : first;
+      let pages: (Week | null)[] = [];
+      for (const skip of first ? [true, false] : [false]) {
+        pages = [];
+        let dated = true;
+        for (const w of unique) {
+          const monday = pages[0] ? addDays(pages[0].monday, 7 * (w.DisPlayWeek - unique[0]!.DisPlayWeek)) : "";
+          if (skip && monday && (addDays(monday, 6) < lo || monday > last)) continue;
+          const p = parseWeek(await get(PORTAL, `/Home/DrawingSchedules?${query(t)}&Week=${w.Week}`), id);
+          pages.push(p);
+          if (!p) break;
+          if (skip && monday && p.monday !== monday) {
+            dated = false;
+            break;
+          }
+        }
+        if (dated) break;
+      }
+      if (!pages.length || pages.some((p) => !p)) return payload;
+      // From this day on, the term is what was just read; anything earlier stays as it was synced.
+      const start = since > pages[0]!.monday ? since : pages[0]!.monday;
+      from[id] = start;
       const keys = new Set(sessions.map((s) => s.key));
       pages.forEach((p) =>
         p!.sessions.forEach((s) => {
-          if (keys.has(s.key)) return;
+          if (s.start < start || keys.has(s.key)) return;
           keys.add(s.key);
           sessions.push({ ...s, address: addressOf(s.room) });
         })
@@ -368,7 +419,8 @@ export async function readLms(plan: Plan): Promise<LmsPayload | null> {
         !open.has(e.id),
     }));
 
-  const payload: LmsPayload = { events, from, to };
+  const who = form.querySelector("[data-userid]")?.getAttribute("data-userid") ?? "";
+  const payload: LmsPayload = { who, events, from, to };
 
   if (plan.feed) {
     const page = await get(LMS, "/calendar/export.php", {
@@ -393,6 +445,7 @@ export async function readLms(plan: Plan): Promise<LmsPayload | null> {
 // UEH's login hub remembers the student long after the portal and LMS sessions lapse. Going through it and
 // pressing its "Tiếp tục / Continue" (what the student would click; no password involved) opens a fresh
 // session. False when the hub has forgotten them too, so they need to sign in once themselves.
+// The hub sends the student back to the portal over plain http first, hence the manifest's http permission.
 export async function renew(site: Site): Promise<boolean> {
   const origin = site === "portal" ? PORTAL : LMS;
   const entry = site === "portal" ? "/Login/LoginUEH" : "/ueh-login/student.php";

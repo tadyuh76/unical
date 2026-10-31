@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "UniCal",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "UEH class schedules, exams and LMS deadlines in Google Calendar, kept up to date automatically.",
   "homepage_url": "https://unical.tadyuh.dev",
   "action": {
@@ -36,6 +36,7 @@
   ],
   "host_permissions": [
     "https://student.ueh.edu.vn/*",
+    "http://student.ueh.edu.vn/*",
     "https://lms.ueh.edu.vn/*",
     "https://loginst.ueh.edu.vn/*",
     "https://www.googleapis.com/*"

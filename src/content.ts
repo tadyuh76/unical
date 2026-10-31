@@ -2,7 +2,7 @@
 // exams and LMS deadlines right away (ueh.ts) and hands them to the background worker, which keeps Google
 // Calendar in sync. Bundled as a single classic script.
 import type { LmsPayload, Message, Plan, PortalPayload, SyncReport } from "@/types";
-import { readLms, readPortal } from "@/ueh";
+import { CALM, readLms, readPortal } from "@/ueh";
 
 const send = <T>(message: Message) =>
   chrome.runtime.sendMessage(message) as Promise<T>;
@@ -54,11 +54,11 @@ function toast(message: string, action?: { label: string; run: () => void }) {
   setTimeout(hide, action ? 12000 : 5000);
 }
 
-function report({ changed, connected, nudge }: SyncReport) {
+function report({ changed, connected, nudge, lost }: SyncReport) {
   if (!connected) {
     if (nudge) {
-      toast("UniCal đọc xong lịch của bạn rồi nè", {
-        label: "Thêm vào Calendar",
+      toast(lost ? "Google Calendar đã ngưng cập nhật" : "UniCal đọc xong lịch của bạn rồi nè", {
+        label: lost ? "Kết nối lại" : "Kết nối Google Calendar",
         run: () => send({ type: "OPEN_POPUP" }),
       });
     }
@@ -69,7 +69,7 @@ function report({ changed, connected, nudge }: SyncReport) {
     changed.exams && `${changed.exams} lịch thi`,
     changed.deadlines && `${changed.deadlines} deadline`,
   ].filter(Boolean);
-  if (parts.length) toast(`Calendar vừa cập nhật · ${parts.join(" · ")}`);
+  if (parts.length) toast(`Google Calendar vừa cập nhật · ${parts.join(" · ")}`);
 }
 
 // ---- Entry ----
@@ -78,7 +78,7 @@ async function run() {
   const plan = await send<Plan>({ type: "PLAN" });
   let result: SyncReport | undefined;
 
-  if (location.hostname === "student.ueh.edu.vn" && (plan.exams || plan.classes)) {
+  if (location.hostname === "student.ueh.edu.vn" && (plan.exams || plan.classes) && CALM.test(location.pathname)) {
     const payload: PortalPayload | null = await readPortal(plan);
     if (payload) result = await send({ type: "PORTAL", payload });
   } else if (location.hostname === "lms.ueh.edu.vn" && (plan.deadlines || plan.feed)) {

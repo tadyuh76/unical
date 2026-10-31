@@ -11,7 +11,7 @@ export const CALENDARS: Record<Source, string> = {
   deadlines: "UEH · Deadline",
 };
 
-interface GoogleTime {
+export interface GoogleTime {
   dateTime?: string;
   date?: string;
   timeZone?: string;
@@ -44,13 +44,36 @@ const EXAM_MINUTES = 90;
 // and classes by subject from the rest, ordered so neighbours look different.
 const EXAM_COLOR = "11";
 const DEADLINE_COLOR = "6";
-const PALETTE = ["7", "2", "9", "3", "5", "10", "1", "4", "8"];
+const PALETTE = ["7", "2", "9", "3", "5", "10", "1", "4"];
+const OFF_COLOR = "8"; // Graphite: a session UEH marked "NGHỈ" (no class that day)
 const LHP = /\d{2}[DGC]\d[A-Z]{2,4}\d{8}/g;
 
 const lines = (parts: (string | false | undefined)[]) =>
   parts.filter(Boolean).join("\n");
 
 const roomId = (room: string) => room.replace(/\s*\(.*\)\s*$/, "").trim();
+
+// A room as students say it: without UEH's internal suffixes ("B2-502ah" -> "B2-502", "San104nvl" ->
+// "Sân 104") and with the portal's codes spelled out ("NGOAIKHOA" -> "Ngoại khóa").
+export function roomLabel(room: string): string {
+  const id = roomId(room);
+  if (/^ngoai\s*khoa$/i.test(id)) return "Ngoại khóa";
+  if (/^online$/i.test(id)) return "Online";
+  if (/^lms$/i.test(id)) return "LMS";
+  return id.replace(/^san\s*(?=\d)/i, "Sân ").replace(/(\d)[a-z]{2,}$/, "$1");
+}
+
+// The room with whatever the portal adds in brackets kept: "B2-507 (PMT)" (a computer lab).
+export const roomText = (room: string) => room.replace(roomId(room), roomLabel(room)).trim();
+
+// "ONLINE", "LMS", "NGOAIKHOA" stand in for a room but aren't a place, so they never become a location.
+const nowhere = (room: string) => /^(online|lms|ngoai\s*khoa)$/i.test(roomId(room));
+
+// Online exams sit in UEH's "virtual campus": a code for a room (BOX-04, VPK.CNTTKD) and a note saying so.
+export const onlineExam = (e: Exam) => /^o$/i.test(e.campus.trim()) || /cơ sở ảo/i.test(e.note);
+
+// An essay or project "exam" with only a date and no sitting time: that date is when the work is due.
+const handIn = (e: Exam) => !e.time && /tiểu luận|dự án|bài tập/i.test(e.format);
 
 const nextDay = (date: string) =>
   new Date(Date.parse(`${date}T00:00:00Z`) + 86400_000).toISOString().slice(0, 10);
@@ -60,6 +83,9 @@ const at = (local: string) => ({ dateTime: `${local}:00`, timeZone: TIMEZONE });
 // "Bài tập 3 tới hạn" -> "Bài tập 3"
 export const cleanTitle = (name: string) =>
   name.replace(/\s+(tới hạn|đến hạn|is due|due)$/i, "").trim();
+
+// UEH keeps a called-off session in the timetable with "Hình thức học: NGHỈ".
+export const isOff = (s: ClassSession) => /^ngh/i.test(s.mode.trim());
 
 // Prefer the subject name from the timetable; otherwise tidy the LMS course name.
 export function courseName(raw: string, subjects: Record<string, string>): string {
@@ -77,12 +103,19 @@ export function courseName(raw: string, subjects: Record<string, string>): strin
   return /\p{L}{4,}/u.test(tidy) ? tidy : full;
 }
 
-function classEvents(sessions: ClassSession[]): CalendarEvent[] {
+// Colours go by the term's whole subject list (every subject UniCal ever read for it, not just the sessions
+// still kept), so a subject keeps its colour all term long.
+function classEvents(sessions: ClassSession[], known: Record<string, string>): CalendarEvent[] {
   const colors = new Map<string, string>();
   const terms = new Map<string, Set<string>>();
   sessions.forEach((s) => {
     if (!terms.has(s.term)) terms.set(s.term, new Set());
     terms.get(s.term)!.add(s.subject);
+  });
+  // "2026HKC" sections are "26C…"
+  terms.forEach((subjects, term) => {
+    const prefix = term.slice(2, 4) + term.slice(-1);
+    for (const [lhp, subject] of Object.entries(known)) if (lhp.startsWith(prefix)) subjects.add(subject);
   });
   terms.forEach((subjects, term) =>
     [...subjects]
@@ -93,8 +126,23 @@ function classEvents(sessions: ClassSession[]): CalendarEvent[] {
   );
 
   return sessions.map((s) => {
+    if (isOff(s)) {
+      return {
+        key: s.key,
+        start: atLocal(s.start),
+        body: {
+          summary: `Nghỉ · ${s.subject}`,
+          description: lines([s.periods && `Tiết ${s.periods}`, s.lhp && `LHP: ${s.lhp}`]),
+          start: at(s.start),
+          end: at(s.end),
+          colorId: OFF_COLOR,
+          transparency: "transparent",
+          reminders: { useDefault: false, overrides: [] },
+        },
+      };
+    }
     const tag = s.room
-      ? roomId(s.room)
+      ? roomLabel(s.room)
       : /lms/i.test(s.mode)
         ? "LMS"
         : /online/i.test(s.mode)
@@ -105,7 +153,7 @@ function classEvents(sessions: ClassSession[]): CalendarEvent[] {
       start: atLocal(s.start),
       body: {
         summary: tag ? `[${tag}] ${s.subject}` : s.subject,
-        location: s.address ? `${s.room}, ${s.address}` : s.room,
+        location: [!nowhere(s.room) && roomText(s.room), s.address].filter(Boolean).join(", "),
         description: lines([
           s.periods && `Tiết ${s.periods}`,
           s.teacher && `GV: ${s.teacher}${s.email ? ` · ${s.email}` : ""}`,
@@ -126,17 +174,19 @@ function examEvents(exams: Exam[]): CalendarEvent[] {
     const start = `${e.date}T${e.time || "00:00"}`;
     const [h = 0, m = 0] = (e.time || "00:00").split(":").map(Number);
     const eveningBefore = 4 * 60 + h * 60 + m; // 20:00 the day before
+    const online = onlineExam(e);
     return {
       key: e.key,
       start: atLocal(start),
       body: {
-        summary: `Thi · ${e.subject}`,
-        location: [e.room, e.address].filter(Boolean).join(", "),
+        summary: `${handIn(e) ? "Nộp bài" : "Thi"} · ${e.subject}`,
+        location: online ? "Trực tuyến" : [e.room && roomText(e.room), e.address].filter(Boolean).join(", "),
         description: lines([
           e.sbd && `SBD: ${e.sbd}`,
           [e.kind, e.attempt].filter(Boolean).join(" · "),
           e.format && `Hình thức: ${e.format}`,
-          e.note && e.note !== e.address && `Ghi chú: ${e.note}`,
+          online && e.room && `Phòng: ${e.room}`,
+          !online && e.note && e.note.replace(/\s*\[Địa chỉ cũ:[^\]]*\]/i, "").trim() !== e.address && `Ghi chú: ${e.note}`,
           `LHP: ${e.lhp}`,
         ]),
         start: e.time ? at(start) : { date: e.date },
@@ -189,7 +239,7 @@ function deadlineEvents(
 }
 
 export function eventsFor(source: Source, state: State): CalendarEvent[] {
-  if (source === "classes") return classEvents(state.data.classes);
+  if (source === "classes") return classEvents(state.data.classes, state.subjects);
   if (source === "exams") return examEvents(state.data.exams);
   return deadlineEvents(state.data.deadlines, state.subjects);
 }
@@ -207,8 +257,25 @@ const icsTime = (name: string, t: GoogleTime) =>
     ? `${name};VALUE=DATE:${t.date.replace(/-/g, "")}`
     : `${name}:${icsUtc(atLocal(t.dateTime!.slice(0, 16)))}`;
 
-const fold = (line: string) =>
-  line.length <= 74 ? line : line.match(/.{1,73}/g)!.join("\r\n ");
+// Lines longer than 75 bytes continue on the next line after a space (RFC 5545), never mid-character.
+function fold(line: string): string {
+  const bytes = (c: string) => new TextEncoder().encode(c).length;
+  const out: string[] = [];
+  let current = "";
+  let size = 0;
+  for (const char of line) {
+    const n = bytes(char);
+    if (size + n > (out.length ? 74 : 75)) {
+      out.push(current);
+      current = "";
+      size = 0;
+    }
+    current += char;
+    size += n;
+  }
+  out.push(current);
+  return out.join("\r\n ");
+}
 
 export function toIcs(events: (CalendarEvent & { id: string })[]): string {
   const stamp = icsUtc(Date.now());

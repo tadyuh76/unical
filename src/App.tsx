@@ -1,6 +1,6 @@
-import { courseName } from "@/calendar";
+import { courseName, isOff, onlineExam, roomLabel, roomText } from "@/calendar";
 import { Buddy } from "@/buddy";
-import { DEFAULTS, atLocal, load, type State } from "@/store";
+import { atLocal, load, signInNeeded, type State } from "@/store";
 import type { Message, Source } from "@/types";
 import {
   BookRegular,
@@ -37,13 +37,21 @@ const LIFT = "shadow-[0_18px_40px_-18px_rgba(79,127,239,0.45)] ring-1 ring-[#4F7
 
 const WEEKDAYS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 
-function when(ms: number): string {
+function when(ms: number, allDay = false): string {
   const d = new Date(ms + 7 * 3600_000); // Vietnam time
   const p = (n: number) => String(n).padStart(2, "0");
-  return `${WEEKDAYS[d.getUTCDay()]} ${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)} · ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+  const day = `${WEEKDAYS[d.getUTCDay()]} ${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}`;
+  return allDay ? day : `${day} · ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
 }
 
-function until(ms: number): string {
+const DAY = 86400_000;
+const vnDay = (ms: number) => Math.floor((ms + 7 * 3600_000) / DAY);
+
+function until(ms: number, allDay = false): string {
+  if (allDay) {
+    const days = vnDay(ms) - vnDay(Date.now());
+    return days <= 0 ? "Hôm nay" : days === 1 ? "Ngày mai" : `${days} ngày`;
+  }
   const min = Math.round((ms - Date.now()) / 60_000);
   if (min < 60) return `${Math.max(min, 1)} phút`;
   if (min < 48 * 60) return `${Math.round(min / 60)} giờ`;
@@ -55,33 +63,35 @@ function ago(ms?: number): string {
   const min = Math.round((Date.now() - ms) / 60_000);
   if (min < 1) return "vừa xong";
   if (min < 60) return `${min} phút trước`;
-  if (min < 48 * 60) return `${Math.round(min / 60)} giờ trước`;
+  if (min < 24 * 60) return `${Math.round(min / 60)} giờ trước`;
+  if (min < 48 * 60) return "hôm qua";
   return `${Math.round(min / 1440)} ngày trước`;
 }
 
-function useStoredState(): State | null {
-  const [state, setState] = useState<State | null>(null);
+function useStoredState(initial: State): State {
+  const [state, setState] = useState(initial);
   useEffect(() => {
     const refresh = () => load().then(setState);
-    refresh();
     chrome.storage.onChanged.addListener(refresh);
     return () => chrome.storage.onChanged.removeListener(refresh);
   }, []);
   return state;
 }
 
-export default function App() {
-  const state = useStoredState();
+export default function App({ initial }: { initial: State }) {
+  const s = useStoredState(initial);
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<"main" | "donate">("main");
+  const [asking, setAsking] = useState<Source | null>(null);
 
-  const s = state ?? DEFAULTS;
-  const connected = Boolean(s.account) && s.problem !== "auth";
+  const connected = Boolean(s.account) && s.problem !== "auth" && s.problem !== "scope";
+  // A read or sync is running, here or in the background (a stuck flag stops counting after a few minutes).
+  const syncing = busy || (s.busy > 0 && Date.now() - s.busy < 5 * 60_000);
 
   const counts = useMemo(() => {
     const now = Date.now();
     return {
-      classes: s.data.classes.filter((c) => atLocal(c.start) > now).length,
+      classes: s.data.classes.filter((c) => !isOff(c) && atLocal(c.start) > now).length,
       exams: s.data.exams.filter((e) => atLocal(`${e.date}T${e.time || "23:59"}`) > now).length,
       deadlines: s.data.deadlines.filter((d) => !d.done && d.due > now).length,
     };
@@ -90,42 +100,46 @@ export default function App() {
   const upcoming = useMemo(() => {
     const now = Date.now();
     const nextClass = s.data.classes
-      .filter((c) => atLocal(c.start) > now)
+      .filter((c) => !isOff(c) && atLocal(c.start) > now)
       .sort((a, b) => a.start.localeCompare(b.start))[0];
+    const on = s.settings;
     return [
-      ...(nextClass
+      ...(on.classes && nextClass
         ? [{
             key: nextClass.key,
-            color: "#4C7CF0",
+            source: "classes" as Source,
             title: nextClass.subject,
-            detail: nextClass.room || nextClass.mode,
+            detail: nextClass.room ? roomText(nextClass.room) : /^t[aậ]p trung$/i.test(nextClass.mode.trim()) ? "" : roomLabel(nextClass.mode),
             at: atLocal(nextClass.start),
+            allDay: false,
             url: PORTAL,
           }]
         : []),
-      ...s.data.exams.map((e) => ({
+      ...(on.exams ? s.data.exams : []).map((e) => ({
         key: e.key,
-        color: "#EF5350",
-        title: `Thi · ${e.subject}`,
-        detail: e.room,
+        source: "exams" as Source,
+        title: e.subject,
+        detail: onlineExam(e) ? "Trực tuyến" : e.room ? roomText(e.room) : e.format,
         at: atLocal(`${e.date}T${e.time || "00:00"}`),
+        allDay: !e.time,
         url: "https://student.ueh.edu.vn/Home/Exam",
       })),
-      ...s.data.deadlines
+      ...(on.deadlines ? s.data.deadlines : [])
         .filter((d) => !d.done)
         .map((d) => ({
           key: d.id,
-          color: "#F59E0B",
+          source: "deadlines" as Source,
           title: d.title,
           detail: courseName(d.course, s.subjects),
           at: d.due,
+          allDay: false,
           url: d.url,
         })),
     ]
-      .filter((i) => i.at > now)
+      .filter((i) => (i.allDay ? i.at + 86400_000 : i.at) > now)
       .sort((a, b) => a.at - b.at)
       .slice(0, 5);
-  }, [s.data, s.subjects]);
+  }, [s.data, s.subjects, s.settings]);
 
   const run = async (message: Message) => {
     setBusy(true);
@@ -145,7 +159,6 @@ export default function App() {
     URL.revokeObjectURL(link.href);
   };
 
-  if (!state) return <div className="h-[420px] w-[360px] bg-white" />;
   if (view === "donate") return <Donate onClose={() => setView("main")} />;
 
   const menu = (
@@ -190,18 +203,23 @@ export default function App() {
             <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-white">
               <GoogleMark />
             </span>
-            {s.problem === "auth" ? "Kết nối lại Google Calendar" : "Kết nối Google Calendar"}
+            {s.account ? "Kết nối lại Google Calendar" : "Kết nối Google Calendar"}
           </button>
           {s.problem === "scope" && (
             <p className="mt-3 text-balance rounded-2xl bg-[#FFF6E5] px-3 py-2 text-[12px] leading-relaxed text-[#8A5300]">
               Nhớ tick ô Google Calendar lúc cấp quyền rồi thử lại nha
             </p>
           )}
-          <p className="mt-3 text-balance text-[12px] leading-relaxed text-[#667085]">
-            Đăng nhập{" "}
-            <a href={PORTAL} target="_blank" className="font-medium text-[#4F7FEF] hover:underline">UEH Student</a> và{" "}
-            <a href={LMS} target="_blank" className="font-medium text-[#4F7FEF] hover:underline">LMS</a> một lần, sau đó UniCal tự cập nhật
-          </p>
+          {syncing && !Object.values(s.seen).some(Boolean) && (
+            <p className="mt-3 text-[12px] leading-relaxed text-[#667085]">Đang đọc lịch từ UEH…</p>
+          )}
+          {!syncing && !Object.values(s.seen).some(Boolean) && (
+            <p className="mt-3 text-balance text-[12px] leading-relaxed text-[#667085]">
+              Đăng nhập{" "}
+              <a href={PORTAL} target="_blank" className="font-medium text-[#4F7FEF] hover:underline">UEH Student</a> và{" "}
+              <a href={LMS} target="_blank" className="font-medium text-[#4F7FEF] hover:underline">LMS</a> một lần, sau đó UniCal tự cập nhật
+            </p>
+          )}
         </section>
         <div className="pointer-events-none absolute left-[56px] top-[328px] w-[68px]">
           <span className="absolute bottom-0 left-1/2 h-2 w-14 -translate-x-1/2 rounded-[50%] bg-[#0B7285]/25" />
@@ -211,94 +229,149 @@ export default function App() {
     );
   }
 
+  const signIn = signInNeeded(s).map((name) => ({ name, url: name === "LMS" ? LMS : PORTAL }));
+  const everRead = Object.values(s.seen).some(Boolean);
+  const read = (id: Source) =>
+    id === "deadlines" ? Math.max(s.seen.deadlines ?? 0, s.seen.feed ?? 0) : s.seen[id] ?? 0;
+  // How current the calendar is: Google writes count only as far as UEH was read. Worth a colour after a day.
+  const reading = SOURCES.filter((src) => s.settings[src.id] && read(src.id) > 0).length;
+  const behind = SOURCES.filter((src) => s.settings[src.id] && read(src.id) > 0)
+    .map((src) => read(src.id))
+    .filter((t) => Date.now() - t > DAY);
+  const anyOn = SOURCES.some((src) => s.settings[src.id]);
+
   return (
     <div className="relative w-[360px] select-none overflow-hidden bg-white text-[#0F1424]">
       <Glow />
       <Header>
         <button
           onClick={() => run({ type: "SYNC" })}
-          disabled={busy}
+          disabled={syncing}
           title="Đồng bộ ngay"
-          className="flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[12px] text-[#667085] transition hover:bg-[#F3F6FC] hover:text-[#0F1424]"
+          aria-label={`Đồng bộ ngay · ${behind.length ? ago(Math.min(...behind)) : ago(s.synced)}`}
+          className="flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[12px] text-[#667085] transition hover:bg-[#F3F6FC] hover:text-[#0F1424] disabled:hover:bg-transparent"
         >
-          {s.problem === "google" ? (
-            <span className="text-[#EF5350]">Chưa được, thử lại nha</span>
+          {syncing ? (
+            <span>Đang đồng bộ</span>
+          ) : s.problem === "google" ? (
+            <span className="text-[#EF5350]">Chưa đồng bộ được</span>
+          ) : behind.length ? (
+            <span className="text-[#B54708]">{ago(Math.min(...behind))}</span>
           ) : (
-            <span>{busy ? "Đang đồng bộ" : ago(s.synced)}</span>
+            everRead && <span>{ago(s.synced)}</span>
           )}
-          <Refresh2Regular className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />
+          <Refresh2Regular className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
         </button>
         {menu}
       </Header>
 
       <main className="relative px-3 pb-3">
+        {signIn.length > 0 && (
+          <p className="mx-1 mb-2 rounded-2xl bg-[#FFF6E5] px-3 py-2.5 text-[12.5px] leading-relaxed text-[#8A5300]">
+            {everRead ? "Đăng nhập lại" : "Đăng nhập"}{" "}
+            {signIn.map((site, i) => (
+              <span key={site.name}>
+                {i > 0 && " và "}
+                <a href={site.url} target="_blank" className="font-semibold underline underline-offset-2">
+                  {site.name}
+                </a>
+              </span>
+            ))}
+          </p>
+        )}
+
         {upcoming.length > 0 ? (
           <ul className="mb-2">
             {upcoming.map((item) => (
               <li key={item.key}>
-                <a href={item.url} target="_blank" className="flex items-center gap-3 rounded-2xl px-2 py-2 transition hover:bg-[#F3F6FC]">
-                  <span className="h-8 w-1 flex-none rounded-full" style={{ background: item.color }} />
+                <a href={item.url} target="_blank" title={item.title} className="flex items-center gap-3 rounded-2xl px-2 py-2 transition hover:bg-[#F3F6FC]">
+                  <Tile source={item.source} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13.5px] font-medium tracking-[-0.01em]">{item.title}</span>
                     <span className="block truncate text-[11.5px] text-[#667085]">
-                      {when(item.at)}
+                      {when(item.at, item.allDay)}
                       {item.detail ? ` · ${item.detail}` : ""}
                     </span>
                   </span>
-                  <span className="flex-none text-[12px] font-medium tabular-nums text-[#98A2B3]">{until(item.at)}</span>
+                  <span className="flex-none text-[12px] font-medium tabular-nums text-[#667085]">{until(item.at, item.allDay)}</span>
                 </a>
               </li>
             ))}
           </ul>
+        ) : !anyOn ? null : signIn.length ? (
+          <div className="flex justify-center pb-4 pt-2">
+            <Buddy mood="alert" size={56} />
+          </div>
         ) : (
           <div className="flex flex-col items-center pb-5 pt-3">
-            <Buddy mood="sleepy" size={56} />
-            <p className="mt-2 text-[12.5px] text-[#667085]">Chưa có gì sắp tới. Thảnh thơi nha</p>
+            {everRead ? (
+              <>
+                <Buddy mood="sleepy" size={56} />
+                <p className="mt-2 text-[12.5px] text-[#667085]">Chưa có gì sắp tới. Thảnh thơi nha</p>
+              </>
+            ) : syncing ? (
+              <>
+                <Buddy size={56} className="motion-safe:animate-bob" />
+                <p className="mt-2 text-[12.5px] text-[#667085]">Đang đọc lịch từ UEH…</p>
+              </>
+            ) : (
+              <>
+                <Buddy mood="alert" size={56} />
+                <p className="mt-2 text-[12.5px] text-[#667085]">Chưa đọc được lịch UEH, thử đồng bộ lại nha</p>
+              </>
+            )}
           </div>
         )}
 
         <section className="rounded-[20px] bg-[#F3F6FC] p-1.5">
           {SOURCES.map((src) => {
-            const seen =
-              src.id === "deadlines"
-                ? Math.max(s.seen.deadlines ?? 0, s.seen.feed ?? 0)
-                : s.seen[src.id];
+            const seen = read(src.id);
             const on = s.settings[src.id];
-            // UEH signed the student out: only they can sign back in (deadlines still come via the private link)
-            const site = src.id === "deadlines" ? "lms" : "portal";
-            const signIn = s.login[site] && (src.id !== "deadlines" || !s.feed);
+            // Only worth a word when UEH hasn't been read for a day, and when the header doesn't already say it all.
+            const stale = on && seen > 0 && Date.now() - seen > DAY && behind.length < reading;
+            const toggle = (value: boolean) => send({ type: "TOGGLE", source: src.id, on: value });
+            if (asking === src.id) {
+              return (
+                <div key={src.id} className="flex h-11 items-center gap-1.5 rounded-2xl bg-white pl-3 pr-1.5">
+                  <span className="min-w-0 flex-1 truncate text-[13px]">Xóa khỏi Google Calendar?</span>
+                  <button
+                    onClick={() => setAsking(null)}
+                    className="h-7 rounded-full px-2.5 text-[12.5px] font-medium text-[#667085] transition hover:bg-[#F3F6FC] hover:text-[#0F1424]"
+                  >
+                    Giữ
+                  </button>
+                  <button
+                    onClick={() => {
+                      setAsking(null);
+                      toggle(false);
+                    }}
+                    className="h-7 rounded-full bg-[#D92D20] px-3 text-[12.5px] font-medium text-white transition hover:bg-[#B42318]"
+                  >
+                    Xóa
+                  </button>
+                </div>
+              );
+            }
             return (
-              <div key={src.id} className="flex items-center gap-3 rounded-2xl px-2 py-2">
+              <div key={src.id} className="flex items-center gap-3 rounded-2xl px-2 py-1.5">
                 <div
                   className="flex h-8 w-8 flex-none items-center justify-center rounded-xl text-white transition-colors [&_svg]:h-4 [&_svg]:w-4"
                   style={{ background: on ? src.color : "#D0D5DD" }}
                 >
                   {src.icon}
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-[13.5px] font-medium tracking-[-0.01em]">{src.label}</span>
-                    {counts[src.id] > 0 && (
-                      <span className="text-[12px] tabular-nums text-[#98A2B3]">{counts[src.id]}</span>
-                    )}
-                  </div>
-                  {signIn ? (
-                    <a href={src.open} target="_blank" className="text-[11.5px] font-medium text-[#D97706] hover:underline">
-                      Đăng nhập {site === "lms" ? "LMS" : "UEH Student"} lại nha
-                    </a>
-                  ) : seen ? (
-                    <div className="text-[11.5px] text-[#98A2B3]">{ago(seen)}</div>
-                  ) : (
-                    <a href={src.open} target="_blank" className="text-[11.5px] font-medium text-[#4F7FEF] hover:underline">
-                      Mở {src.id === "deadlines" ? "LMS" : "UEH Student"} một lần nha
-                    </a>
+                <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                  <span className="text-[13.5px] font-medium tracking-[-0.01em]">{src.label}</span>
+                  {on && counts[src.id] > 0 && (
+                    <span className="text-[12px] tabular-nums text-[#98A2B3]">{counts[src.id]}</span>
                   )}
+                  {stale && <span className="truncate text-[11.5px] text-[#98A2B3]">· {ago(seen)}</span>}
                 </div>
                 <Switch
                   on={on}
                   color={src.color}
                   label={src.label}
-                  onChange={(value) => send({ type: "TOGGLE", source: src.id, on: value })}
+                  onChange={(value) => (!value && s.calendars[src.id] ? setAsking(src.id) : toggle(value))}
                 />
               </div>
             );
@@ -306,7 +379,7 @@ export default function App() {
         </section>
 
         <a
-          href="https://calendar.google.com/"
+          href={`https://calendar.google.com/calendar/r?authuser=${encodeURIComponent(s.account?.email ?? "")}`}
           target="_blank"
           className={`mt-3 flex h-11 items-center justify-center gap-1.5 rounded-full bg-white text-[14px] font-medium text-[#0F1424] transition hover:-translate-y-0.5 active:scale-[0.97] ${LIFT}`}
         >
@@ -315,6 +388,19 @@ export default function App() {
         </a>
       </main>
     </div>
+  );
+}
+
+// What kind of item a row is, by icon as well as colour.
+function Tile({ source }: { source: Source }) {
+  const src = SOURCES.find((x) => x.id === source)!;
+  return (
+    <span
+      className="flex h-8 w-8 flex-none items-center justify-center rounded-xl [&_svg]:h-4 [&_svg]:w-4"
+      style={{ background: `${src.color}1A`, color: src.color }}
+    >
+      {src.icon}
+    </span>
   );
 }
 
@@ -352,6 +438,12 @@ function Menu({
   onSignOut: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [open]);
   const item =
     "flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] text-[#0F1424] transition hover:bg-[#F3F6FC] [&_svg]:h-4 [&_svg]:w-4";
   const pick = (fn: () => void) => () => {
@@ -364,6 +456,8 @@ function Menu({
         onClick={() => setOpen(!open)}
         title={account?.email ?? "Thêm"}
         aria-label={account?.email ?? "Thêm"}
+        aria-expanded={open}
+        aria-haspopup="menu"
         className={`flex h-8 w-8 items-center justify-center rounded-full transition ${
           account ? "ring-1 ring-[#4F7FEF]/15 hover:ring-2 hover:ring-[#4F7FEF]/25" : "bg-white/70 text-[#667085] hover:bg-white hover:text-[#0F1424]"
         }`}
@@ -385,7 +479,7 @@ function Menu({
             {account && <div className="truncate px-2.5 pb-1.5 pt-1 text-[12px] text-[#98A2B3]">{account.email}</div>}
             <button onClick={pick(onIcs)} className={item}>
               <DownloadRegular color="#667085" />
-              Tải file .ics
+              Tải lịch (.ics)
             </button>
             <a href={REVIEW_URL} target="_blank" onClick={() => setOpen(false)} className={item}>
               <StarRegular color="#667085" />

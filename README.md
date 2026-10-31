@@ -11,26 +11,32 @@ Lịch học, lịch thi và deadline LMS của UEH tự động có trong Googl
 1. Cài UniCal, bấm **Kết nối Google Calendar** một lần.
 2. Đăng nhập UEH Student và LMS một lần. Từ đó UniCal tự đọc lịch mới nhất khi bạn mở trình duyệt và mỗi giờ, không cần mở trang UEH nào.
 
-Trong Google Calendar sẽ có 3 lịch riêng, bật/tắt được:
+Trong Google Calendar sẽ có 3 lịch riêng. Tắt một lịch trong UniCal (UniCal hỏi lại trước) thì lịch đó được gỡ khỏi Google Calendar; bật lại thì các mục sắp tới quay lại:
 
 | Lịch | Nguồn | Cập nhật |
 |---|---|---|
 | UEH · Lịch học | UEH Student, từng tuần của học kỳ hiện tại và kỳ sau | 6 giờ/lần |
-| UEH · Lịch thi | UEH Student, học kỳ hiện tại và kỳ sau | 3 giờ/lần trong nền, 10 phút/lần khi bạn mở UEH Student |
+| UEH · Lịch thi | UEH Student, học kỳ trước, hiện tại và kỳ sau (bỏ các môn đã được duyệt vắng thi) | 3 giờ/lần trong nền, 10 phút/lần khi bạn mở UEH Student |
 | UEH · Deadline | LMS: bài tập, quiz | mỗi giờ trong nền, 10 phút/lần khi bạn mở LMS |
 
 - Lịch thi đổi giờ/phòng, Calendar đổi theo. Lớp bị huỷ, sự kiện tương lai bị xoá. Buổi đã qua được giữ lại.
+- Buổi học UEH báo nghỉ hiện thành "Nghỉ · tên môn", màu xám, không nhắc.
+- Cài lại UniCal, dùng trên máy khác, hay ngắt rồi kết nối lại Google: UniCal tìm và dùng tiếp 3 lịch cũ, không tạo thêm. Lỡ có 2 bộ lịch thì UniCal giữ 1, xoá bản thừa. Lịch "UEH · …" của người khác trong cùng tài khoản Google không bị đụng tới.
+- Sự kiện bạn tự thêm vào lịch UniCal không bao giờ bị sửa hay xoá.
+- UEH trả về một học kỳ trống trơn trong khi lịch vẫn còn buổi sắp tới: UniCal giữ nguyên, chỉ xoá khi lần đọc sau (ít nhất 20 phút) vẫn trống.
+- Người khác đăng nhập UEH trên cùng trình duyệt: lịch của họ không bao giờ lọt vào Google Calendar của bạn.
+- Khi bạn đang ở trang đăng ký học phần hay các trang khác của UEH Student, UniCal không đọc gì để không làm chậm trang.
 - Deadline đã nộp được đánh dấu ✓ và tắt nhắc nhở.
 - Lịch thi nhắc lúc 20:00 tối hôm trước và 1 giờ trước giờ thi. Deadline nhắc trước 1 ngày và 2 giờ.
 - Phiên UEH Student hoặc LMS hết hạn: UniCal mở phiên mới qua trang đăng nhập của UEH (nút "Tiếp tục"), không bao giờ thấy hay dùng mật khẩu. Nếu UEH đã đăng xuất hẳn, UniCal nhắc bạn đăng nhập lại; deadline vẫn về qua link lịch riêng của LMS.
-- Biểu tượng tiện ích hiện số deadline trong 3 ngày tới, hoặc "!" khi cần đăng nhập lại.
+- Biểu tượng tiện ích hiện số deadline trong 3 ngày tới, hoặc "!" khi cần đăng nhập lại UEH hay kết nối lại Google.
 - Dùng Apple Calendar, Outlook, Notion Calendar: thêm tài khoản Google vào app, hoặc tải file `.ics` trong UniCal.
 
 Chạy trên Chrome, Brave, Edge, Cốc Cốc và các trình duyệt Chromium khác.
 
 ## Quyền riêng tư
 
-UniCal **không có server**. Dữ liệu chỉ đi giữa trình duyệt của bạn, trang UEH và Google Calendar của chính bạn. Quyền Google duy nhất UniCal xin là tạo lịch riêng và quản lý sự kiện trong các lịch đó; nó không thấy được lịch khác của bạn. Chi tiết: [Chính sách quyền riêng tư](https://unical.tadyuh.dev/privacy).
+UniCal **không có server**. Dữ liệu chỉ đi giữa trình duyệt của bạn, trang UEH và Google Calendar của chính bạn. UniCal xin Google quyền tạo lịch riêng và quản lý sự kiện trong các lịch đó, cùng quyền xem danh sách tên lịch (không bắt buộc) để tìm lại lịch cũ của mình; nó không thấy được sự kiện trong lịch khác của bạn. Chi tiết: [Chính sách quyền riêng tư](https://unical.tadyuh.dev/privacy).
 
 ## Cấu trúc
 
