@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "UniCal",
-  "version": "2.0.1",
-  "description": "UEH class schedules, exams and LMS deadlines in Google Calendar, kept up to date automatically.",
+  "version": "2.0.2",
+  "description": "Lịch học, lịch thi UEH và deadline LMS tự vào Google Calendar. Trường đổi gì, lịch đổi theo.",
   "homepage_url": "https://unical.tadyuh.dev",
   "action": {
     "default_popup": "index.html",
