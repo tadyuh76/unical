@@ -17,7 +17,7 @@ function toast(message: string, action?: { label: string; run: () => void }) {
   root.innerHTML = `
     <style>
       .t { position: fixed; right: 20px; bottom: 20px; z-index: 2147483647;
-        display: flex; align-items: center; gap: 10px; max-width: min(460px, calc(100vw - 40px));
+        display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 40px);
         padding: 8px 8px 8px 10px; border-radius: 22px; background: #fff; color: #0F1424;
         font: 500 13.5px/1.4 "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         letter-spacing: -0.005em;
@@ -25,7 +25,7 @@ function toast(message: string, action?: { label: string; run: () => void }) {
         animation: in .35s cubic-bezier(.2,.9,.3,1.2); }
       .t.out { animation: out .25s ease-in forwards; }
       img { width: 32px; height: 32px; flex: none; }
-      span { padding-right: 6px; }
+      span { padding-right: 6px; text-wrap: balance; min-width: 0; }
       button { all: unset; cursor: pointer; padding: 8px 14px; border-radius: 999px;
         background: #0F1424; color: #fff; font-weight: 500; white-space: nowrap; transition: background .15s; }
       button:hover { background: rgba(15, 20, 36, .85); }
@@ -57,7 +57,7 @@ function toast(message: string, action?: { label: string; run: () => void }) {
 function report({ changed, connected, nudge, lost }: SyncReport) {
   if (!connected) {
     if (nudge) {
-      toast(lost ? "Google Calendar đã ngưng cập nhật" : "UniCal đọc xong lịch của bạn rồi nè", {
+      toast(lost ? "Google Calendar đã ngưng cập nhật" : "Lịch của bạn đã sẵn sàng", {
         label: lost ? "Kết nối lại" : "Kết nối Google Calendar",
         run: () => send({ type: "OPEN_POPUP" }),
       });

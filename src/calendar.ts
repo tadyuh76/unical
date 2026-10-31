@@ -73,7 +73,34 @@ const nowhere = (room: string) => /^(online|lms|ngoai\s*khoa)$/i.test(roomId(roo
 export const onlineExam = (e: Exam) => /^o$/i.test(e.campus.trim()) || /cơ sở ảo/i.test(e.note);
 
 // An essay or project "exam" with only a date and no sitting time: that date is when the work is due.
-const handIn = (e: Exam) => !e.time && /tiểu luận|dự án|bài tập/i.test(e.format);
+export const handIn = (e: Exam) => !e.time && /tiểu luận|dự án|bài tập/i.test(e.format);
+
+// UEH rooms start with their campus letter: "N1-406" is at campus N, "B2-502" at campus B.
+const campusOf = (room: string) => roomId(room).match(/^([A-Z])\d/)?.[1] ?? "";
+
+// Where to go, short enough for a calendar block: the room and its campus ("N1-406 (PMT) · Cơ sở N"), with the
+// street address in the description. A place without a campus letter (a sports ground, the defence-training
+// centre) keeps its address as the location.
+function place(room: string, address: string, campus = campusOf(room)) {
+  const where = room && !nowhere(room) ? roomText(room) : "";
+  const short = Boolean(where && campus && address);
+  return {
+    location: short ? `${where} · Cơ sở ${campus}` : [where, address].filter(Boolean).join(", "),
+    address: short ? `Địa chỉ: ${address}` : "",
+  };
+}
+
+// How a session is held, in plain words instead of the portal's capitals.
+const MODES: [RegExp, string][] = [
+  [/^t[aậ]p trung$/i, "Học trực tiếp"],
+  [/^online$/i, "Học online"],
+  [/^lms$/i, "Học trên LMS"],
+];
+const modeText = (mode: string) => MODES.find(([re]) => re.test(mode.trim()))?.[1] ?? `Hình thức: ${mode}`;
+
+// "TS.Đặng Ngọc Hoàng Thành" -> "TS. Đặng Ngọc Hoàng Thành" (and "THS." -> "ThS.").
+const person = (name: string) =>
+  name.replace(/\b(PGS|GS|TS|ThS|THS|CN|KS|NCS)\.\s*/g, (_, t: string) => `${t === "THS" ? "ThS" : t}. `).trim();
 
 const nextDay = (date: string) =>
   new Date(Date.parse(`${date}T00:00:00Z`) + 86400_000).toISOString().slice(0, 10);
@@ -148,16 +175,18 @@ function classEvents(sessions: ClassSession[], known: Record<string, string>): C
         : /online/i.test(s.mode)
           ? "Online"
           : "";
+    const where = place(s.room, s.address);
     return {
       key: s.key,
       start: atLocal(s.start),
       body: {
         summary: tag ? `[${tag}] ${s.subject}` : s.subject,
-        location: [!nowhere(s.room) && roomText(s.room), s.address].filter(Boolean).join(", "),
+        location: where.location,
         description: lines([
           s.periods && `Tiết ${s.periods}`,
-          s.teacher && `GV: ${s.teacher}${s.email ? ` · ${s.email}` : ""}`,
-          s.mode && `Hình thức: ${s.mode}`,
+          s.teacher && `GV: ${person(s.teacher)}${s.email ? ` · ${s.email}` : ""}`,
+          s.mode && modeText(s.mode),
+          where.address,
           s.lhp && `LHP: ${s.lhp}`,
         ]),
         start: at(s.start),
@@ -175,17 +204,19 @@ function examEvents(exams: Exam[]): CalendarEvent[] {
     const [h = 0, m = 0] = (e.time || "00:00").split(":").map(Number);
     const eveningBefore = 4 * 60 + h * 60 + m; // 20:00 the day before
     const online = onlineExam(e);
+    const where = place(e.room, e.address, /^[A-NP-Z]$/.test(e.campus.trim()) ? e.campus.trim() : undefined);
     return {
       key: e.key,
       start: atLocal(start),
       body: {
         summary: `${handIn(e) ? "Nộp bài" : "Thi"} · ${e.subject}`,
-        location: online ? "Trực tuyến" : [e.room && roomText(e.room), e.address].filter(Boolean).join(", "),
+        location: online ? "Trực tuyến" : where.location,
         description: lines([
           e.sbd && `SBD: ${e.sbd}`,
           [e.kind, e.attempt].filter(Boolean).join(" · "),
           e.format && `Hình thức: ${e.format}`,
           online && e.room && `Phòng: ${e.room}`,
+          !online && where.address,
           !online && e.note && e.note.replace(/\s*\[Địa chỉ cũ:[^\]]*\]/i, "").trim() !== e.address && `Ghi chú: ${e.note}`,
           `LHP: ${e.lhp}`,
         ]),

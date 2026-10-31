@@ -767,7 +767,7 @@ async function ics() {
 // ---- Toolbar badge: deadlines due in the next 3 days ----
 
 async function badge() {
-  const { account, problem, data, login, settings, feed, seen } = await load();
+  const { account, problem, data, login, settings, feed, seen, synced } = await load();
   const warn = async (title: string) => {
     await chrome.action.setBadgeBackgroundColor({ color: "#f59e0b" });
     await chrome.action.setBadgeText({ text: "!" });
@@ -782,6 +782,14 @@ async function badge() {
     return warn(`${again} ${sites.join(" và ")}`);
   }
   const now = Date.now();
+  // Problems that usually sort themselves out only get a sign once they've lasted: Google refusing changes
+  // for a day, or UEH not read for three.
+  if (problem === "google" && synced && now - synced > DAY) return warn("Chưa đồng bộ được với Google Calendar");
+  const read = SOURCES.filter((s) => settings[s])
+    .map((s) => (s === "deadlines" ? Math.max(seen.deadlines ?? 0, seen.feed ?? 0) : seen[s] ?? 0))
+    .filter(Boolean);
+  const days = read.length ? Math.floor((now - Math.min(...read)) / DAY) : 0;
+  if (days >= 3) return warn(`Lịch chưa cập nhật ${days} ngày`);
   const soon = settings.deadlines
     ? data.deadlines.filter((d) => !d.done && d.due > now && d.due < now + 3 * DAY)
     : [];

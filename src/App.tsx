@@ -1,4 +1,4 @@
-import { courseName, isOff, onlineExam, roomLabel, roomText } from "@/calendar";
+import { courseName, handIn, isOff, onlineExam, roomLabel, roomText } from "@/calendar";
 import { Buddy } from "@/buddy";
 import { atLocal, load, signInNeeded, type State } from "@/store";
 import type { Message, Source } from "@/types";
@@ -119,7 +119,7 @@ export default function App({ initial }: { initial: State }) {
         key: e.key,
         source: "exams" as Source,
         title: e.subject,
-        detail: onlineExam(e) ? "Trực tuyến" : e.room ? roomText(e.room) : e.format,
+        detail: handIn(e) ? `Nộp bài ${e.format.toLowerCase()}` : onlineExam(e) ? "Trực tuyến" : e.room ? roomText(e.room) : e.format,
         at: atLocal(`${e.date}T${e.time || "00:00"}`),
         allDay: !e.time,
         url: "https://student.ueh.edu.vn/Home/Exam",
@@ -195,6 +195,9 @@ export default function App({ initial }: { initial: State }) {
               </div>
             ))}
           </div>
+          {s.account && s.problem === "auth" && (
+            <p className="-mt-1 mb-3 text-[12.5px] font-medium text-[#B54708]">Google Calendar đã ngưng cập nhật</p>
+          )}
           <button
             onClick={() => run({ type: "CONNECT" })}
             disabled={busy}
@@ -207,7 +210,7 @@ export default function App({ initial }: { initial: State }) {
           </button>
           {s.problem === "scope" && (
             <p className="mt-3 text-balance rounded-2xl bg-[#FFF6E5] px-3 py-2 text-[12px] leading-relaxed text-[#8A5300]">
-              Nhớ tick ô Google Calendar lúc cấp quyền rồi thử lại nha
+              Nhớ bấm “Chọn tất cả” khi cấp quyền rồi thử lại nha
             </p>
           )}
           {syncing && !Object.values(s.seen).some(Boolean) && (
@@ -239,6 +242,8 @@ export default function App({ initial }: { initial: State }) {
     .map((src) => read(src.id))
     .filter((t) => Date.now() - t > DAY);
   const anyOn = SOURCES.some((src) => s.settings[src.id]);
+  const allBehind = reading > 0 && behind.length === reading;
+  const cap = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
   return (
     <div className="relative w-[360px] select-none overflow-hidden bg-white text-[#0F1424]">
@@ -248,17 +253,17 @@ export default function App({ initial }: { initial: State }) {
           onClick={() => run({ type: "SYNC" })}
           disabled={syncing}
           title="Đồng bộ ngay"
-          aria-label={`Đồng bộ ngay · ${behind.length ? ago(Math.min(...behind)) : ago(s.synced)}`}
+          aria-label={`Đồng bộ ngay · ${allBehind ? ago(Math.min(...behind)) : ago(s.synced)}`}
           className="flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[12px] text-[#667085] transition hover:bg-[#F3F6FC] hover:text-[#0F1424] disabled:hover:bg-transparent"
         >
           {syncing ? (
             <span>Đang đồng bộ</span>
           ) : s.problem === "google" ? (
             <span className="text-[#EF5350]">Chưa đồng bộ được</span>
-          ) : behind.length ? (
-            <span className="text-[#B54708]">{ago(Math.min(...behind))}</span>
+          ) : allBehind ? (
+            <span className="text-[#B54708]">{cap(ago(Math.min(...behind)))}</span>
           ) : (
-            everRead && <span>{ago(s.synced)}</span>
+            everRead && <span>{cap(ago(s.synced))}</span>
           )}
           <Refresh2Regular className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
         </button>
@@ -328,17 +333,18 @@ export default function App({ initial }: { initial: State }) {
             const seen = read(src.id);
             const on = s.settings[src.id];
             // Only worth a word when UEH hasn't been read for a day, and when the header doesn't already say it all.
-            const stale = on && seen > 0 && Date.now() - seen > DAY && behind.length < reading;
+            const stale = on && seen > 0 && Date.now() - seen > DAY && !allBehind;
             const toggle = (value: boolean) => send({ type: "TOGGLE", source: src.id, on: value });
             if (asking === src.id) {
               return (
-                <div key={src.id} className="flex h-11 items-center gap-1.5 rounded-2xl bg-white pl-3 pr-1.5">
-                  <span className="min-w-0 flex-1 truncate text-[13px]">Xóa khỏi Google Calendar?</span>
+                <div key={src.id} className="flex items-center gap-2 rounded-2xl bg-white px-2 py-1.5">
+                  <Tile source={src.id} solid />
+                  <span className="min-w-0 flex-1 truncate text-[12.5px]">Xóa khỏi Google Calendar?</span>
                   <button
                     onClick={() => setAsking(null)}
                     className="h-7 rounded-full px-2.5 text-[12.5px] font-medium text-[#667085] transition hover:bg-[#F3F6FC] hover:text-[#0F1424]"
                   >
-                    Giữ
+                    Hủy
                   </button>
                   <button
                     onClick={() => {
@@ -355,8 +361,8 @@ export default function App({ initial }: { initial: State }) {
             return (
               <div key={src.id} className="flex items-center gap-3 rounded-2xl px-2 py-1.5">
                 <div
-                  className="flex h-8 w-8 flex-none items-center justify-center rounded-xl text-white transition-colors [&_svg]:h-4 [&_svg]:w-4"
-                  style={{ background: on ? src.color : "#D0D5DD" }}
+                  className="flex h-8 w-8 flex-none items-center justify-center rounded-xl transition-colors [&_svg]:h-4 [&_svg]:w-4"
+                  style={on ? { background: src.color, color: "#fff" } : { background: "#EAECF0", color: "#98A2B3" }}
                 >
                   {src.icon}
                 </div>
@@ -365,7 +371,7 @@ export default function App({ initial }: { initial: State }) {
                   {on && counts[src.id] > 0 && (
                     <span className="text-[12px] tabular-nums text-[#98A2B3]">{counts[src.id]}</span>
                   )}
-                  {stale && <span className="truncate text-[11.5px] text-[#98A2B3]">· {ago(seen)}</span>}
+                  {stale && <span className="truncate text-[11.5px] text-[#B54708]">· {ago(seen)}</span>}
                 </div>
                 <Switch
                   on={on}
@@ -392,12 +398,13 @@ export default function App({ initial }: { initial: State }) {
 }
 
 // What kind of item a row is, by icon as well as colour.
-function Tile({ source }: { source: Source }) {
+// `solid`: the filled look of the switch rows.
+function Tile({ source, solid = false }: { source: Source; solid?: boolean }) {
   const src = SOURCES.find((x) => x.id === source)!;
   return (
     <span
       className="flex h-8 w-8 flex-none items-center justify-center rounded-xl [&_svg]:h-4 [&_svg]:w-4"
-      style={{ background: `${src.color}1A`, color: src.color }}
+      style={solid ? { background: src.color, color: "#fff" } : { background: `${src.color}1A`, color: src.color }}
     >
       {src.icon}
     </span>
@@ -476,7 +483,9 @@ function Menu({
         <>
           <button aria-hidden tabIndex={-1} className="fixed inset-0 z-20 cursor-default" onClick={() => setOpen(false)} />
           <div className={`absolute right-0 top-10 z-30 w-56 rounded-[20px] bg-white p-1.5 ${LIFT}`}>
-            {account && <div className="truncate px-2.5 pb-1.5 pt-1 text-[12px] text-[#98A2B3]">{account.email}</div>}
+            {account && (
+              <div className="mb-1 truncate border-b border-[#EAECF0] px-2.5 pb-2 pt-1 text-[12px] text-[#667085]">{account.email}</div>
+            )}
             <button onClick={pick(onIcs)} className={item}>
               <DownloadRegular color="#667085" />
               Tải lịch (.ics)
