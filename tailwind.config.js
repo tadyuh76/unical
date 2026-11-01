@@ -3,6 +3,13 @@ export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      // Named colours (globals.css).
+      colors: Object.fromEntries(
+        ["page", "ink", "muted", "faint", "soft", "raised", "line", "track", "brand", "brand-soft", "warn", "warn-bg", "warn-ink", "danger", "signin"]
+          .map((name) => [name, `rgb(var(--${name}) / <alpha-value>)`])
+          .concat([["edge", "var(--edge)"]])
+      ),
+      boxShadow: { lift: "var(--lift)" },
       keyframes: {
         bob: {
           "0%, 100%": { transform: "translateY(0) rotate(0deg)" },

@@ -33,7 +33,7 @@ const SOURCES: { id: Source; label: string; color: string; icon: ReactNode; open
 ];
 
 // Soft brand-tinted shadows only, never grey or black.
-const LIFT = "shadow-[0_18px_40px_-18px_rgba(79,127,239,0.45)] ring-1 ring-[#4F7FEF]/10";
+const LIFT = "shadow-lift ring-1 ring-edge";
 
 const WEEKDAYS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 
@@ -173,11 +173,11 @@ export default function App({ initial }: { initial: State }) {
   if (!connected) {
     return (
       <div
-        className="relative flex h-[540px] w-[360px] select-none flex-col bg-[#E8F0FF] bg-cover bg-bottom text-[#0F1424]"
+        className="relative flex h-[540px] w-[360px] select-none flex-col bg-signin bg-cover bg-bottom text-ink"
         style={{ backgroundImage: "url(art/signin.webp)" }}
       >
         <Header>{menu}</Header>
-        <section className={`relative z-10 mx-4 mt-1 rounded-[24px] bg-white p-4 text-center ${LIFT}`}>
+        <section className={`relative z-10 mx-3 mt-1 rounded-[24px] bg-raised p-4 text-center ${LIFT}`}>
           <div className="mb-4 flex justify-center gap-1.5">
             {SOURCES.map((src) => (
               <div
@@ -186,9 +186,9 @@ export default function App({ initial }: { initial: State }) {
                 style={{ background: `${src.color}14`, color: src.color }}
               >
                 {src.icon}
-                <span className="text-[#0F1424]">{src.label}</span>
+                <span className="text-ink">{src.label}</span>
                 {counts[src.id] > 0 && (
-                  <span className="absolute -right-1.5 -top-2 h-4 min-w-4 rounded-full bg-[#0F1424] px-1 text-center text-[10px] font-semibold leading-4 tabular-nums text-white ring-2 ring-white">
+                  <span className="absolute -right-1.5 -top-2 h-4 min-w-4 rounded-full bg-ink px-1 text-center text-[10px] font-semibold leading-4 tabular-nums text-page ring-2 ring-raised">
                     {counts[src.id]}
                   </span>
                 )}
@@ -196,12 +196,12 @@ export default function App({ initial }: { initial: State }) {
             ))}
           </div>
           {s.account && s.problem === "auth" && (
-            <p className="-mt-1 mb-3 text-[12.5px] font-medium text-[#B54708]">Google Calendar đã ngưng cập nhật</p>
+            <p className="-mt-1 mb-3 text-[12.5px] font-medium text-warn">Google Calendar đã ngưng cập nhật</p>
           )}
           <button
             onClick={() => run({ type: "CONNECT" })}
             disabled={busy}
-            className="flex h-12 w-full items-center justify-center gap-2.5 rounded-full bg-[#0F1424] px-5 text-[15px] font-medium text-white transition hover:bg-[#0F1424]/85 active:scale-[0.97] disabled:opacity-60"
+            className="flex h-12 w-full items-center justify-center gap-2.5 rounded-full bg-ink px-5 text-[15px] font-medium text-page transition hover:bg-ink/85 active:scale-[0.97] disabled:opacity-60"
           >
             <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-white">
               <GoogleMark />
@@ -209,18 +209,18 @@ export default function App({ initial }: { initial: State }) {
             {s.account ? "Kết nối lại Google Calendar" : "Kết nối Google Calendar"}
           </button>
           {s.problem === "scope" && (
-            <p className="mt-3 text-balance rounded-2xl bg-[#FFF6E5] px-3 py-2 text-[12px] leading-relaxed text-[#8A5300]">
+            <p className="mt-3 text-balance rounded-2xl bg-warn-bg px-3 py-2 text-[12px] leading-relaxed text-warn-ink">
               Nhớ bấm “Chọn tất cả” khi cấp quyền rồi thử lại nha
             </p>
           )}
           {syncing && !Object.values(s.seen).some(Boolean) && (
-            <p className="mt-3 text-[12px] leading-relaxed text-[#667085]">Đang đọc lịch từ UEH…</p>
+            <p className="mt-3 text-[12px] leading-relaxed text-muted">Đang đọc lịch từ UEH…</p>
           )}
           {!syncing && !Object.values(s.seen).some(Boolean) && (
-            <p className="mt-3 text-balance text-[12px] leading-relaxed text-[#667085]">
+            <p className="mt-3 text-balance text-[12px] leading-relaxed text-muted">
               Đăng nhập{" "}
-              <a href={PORTAL} target="_blank" className="font-medium text-[#4F7FEF] hover:underline">UEH Student</a> và{" "}
-              <a href={LMS} target="_blank" className="font-medium text-[#4F7FEF] hover:underline">LMS</a> một lần, sau đó UniCal tự cập nhật
+              <a href={PORTAL} target="_blank" className="font-medium text-brand hover:underline">UEH Student</a> và{" "}
+              <a href={LMS} target="_blank" className="font-medium text-brand hover:underline">LMS</a> một lần, sau đó UniCal tự cập nhật
             </p>
           )}
         </section>
@@ -246,7 +246,7 @@ export default function App({ initial }: { initial: State }) {
   const cap = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
   return (
-    <div className="relative w-[360px] select-none overflow-hidden bg-white text-[#0F1424]">
+    <div className="relative w-[360px] select-none overflow-hidden bg-page text-ink">
       <Glow />
       <Header>
         <button
@@ -254,14 +254,14 @@ export default function App({ initial }: { initial: State }) {
           disabled={syncing}
           title="Đồng bộ ngay"
           aria-label={`Đồng bộ ngay · ${allBehind ? ago(Math.min(...behind)) : ago(s.synced)}`}
-          className="flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[12px] text-[#667085] transition hover:bg-[#F3F6FC] hover:text-[#0F1424] disabled:hover:bg-transparent"
+          className="flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[12px] text-muted transition hover:bg-soft hover:text-ink disabled:hover:bg-transparent"
         >
           {syncing ? (
             <span>Đang đồng bộ</span>
           ) : s.problem === "google" ? (
-            <span className="text-[#EF5350]">Chưa đồng bộ được</span>
+            <span className="text-danger">Chưa đồng bộ được</span>
           ) : allBehind ? (
-            <span className="text-[#B54708]">{cap(ago(Math.min(...behind)))}</span>
+            <span className="text-warn">{cap(ago(Math.min(...behind)))}</span>
           ) : (
             everRead && <span>{cap(ago(s.synced))}</span>
           )}
@@ -272,7 +272,7 @@ export default function App({ initial }: { initial: State }) {
 
       <main className="relative px-3 pb-3">
         {signIn.length > 0 && (
-          <p className="mx-1 mb-2 rounded-2xl bg-[#FFF6E5] px-3 py-2.5 text-[12.5px] leading-relaxed text-[#8A5300]">
+          <p className="mb-2 rounded-2xl bg-warn-bg px-3 py-2.5 text-[12.5px] leading-relaxed text-warn-ink">
             {everRead ? "Đăng nhập lại" : "Đăng nhập"}{" "}
             {signIn.map((site, i) => (
               <span key={site.name}>
@@ -289,16 +289,16 @@ export default function App({ initial }: { initial: State }) {
           <ul className="mb-2">
             {upcoming.map((item) => (
               <li key={item.key}>
-                <a href={item.url} target="_blank" title={item.title} className="flex items-center gap-3 rounded-2xl px-2 py-2 transition hover:bg-[#F3F6FC]">
+                <a href={item.url} target="_blank" title={item.title} className="flex items-center gap-3 rounded-2xl px-3 py-2 transition hover:bg-soft">
                   <Tile source={item.source} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13.5px] font-medium tracking-[-0.01em]">{item.title}</span>
-                    <span className="block truncate text-[11.5px] text-[#667085]">
+                    <span className="block truncate text-[11.5px] text-muted">
                       {when(item.at, item.allDay)}
                       {item.detail ? ` · ${item.detail}` : ""}
                     </span>
                   </span>
-                  <span className="flex-none text-[12px] font-medium tabular-nums text-[#667085]">{until(item.at, item.allDay)}</span>
+                  <span className="flex-none text-[12px] font-medium tabular-nums text-muted">{until(item.at, item.allDay)}</span>
                 </a>
               </li>
             ))}
@@ -312,23 +312,23 @@ export default function App({ initial }: { initial: State }) {
             {everRead ? (
               <>
                 <Buddy mood="sleepy" size={56} />
-                <p className="mt-2 text-[12.5px] text-[#667085]">Chưa có gì sắp tới. Thảnh thơi nha</p>
+                <p className="mt-2 text-[12.5px] text-muted">Chưa có gì sắp tới. Thảnh thơi nha</p>
               </>
             ) : syncing ? (
               <>
                 <Buddy size={56} className="motion-safe:animate-bob" />
-                <p className="mt-2 text-[12.5px] text-[#667085]">Đang đọc lịch từ UEH…</p>
+                <p className="mt-2 text-[12.5px] text-muted">Đang đọc lịch từ UEH…</p>
               </>
             ) : (
               <>
                 <Buddy mood="alert" size={56} />
-                <p className="mt-2 text-[12.5px] text-[#667085]">Chưa đọc được lịch UEH, thử đồng bộ lại nha</p>
+                <p className="mt-2 text-[12.5px] text-muted">Chưa đọc được lịch UEH, thử đồng bộ lại nha</p>
               </>
             )}
           </div>
         )}
 
-        <section className="rounded-[20px] bg-[#F3F6FC] p-1.5">
+        <section className="rounded-[20px] bg-soft p-1.5">
           {SOURCES.map((src) => {
             const seen = read(src.id);
             const on = s.settings[src.id];
@@ -337,12 +337,12 @@ export default function App({ initial }: { initial: State }) {
             const toggle = (value: boolean) => send({ type: "TOGGLE", source: src.id, on: value });
             if (asking === src.id) {
               return (
-                <div key={src.id} className="flex items-center gap-2 rounded-2xl bg-white px-2 py-1.5">
+                <div key={src.id} className="flex items-center gap-2 rounded-2xl bg-raised px-1.5 py-1.5">
                   <Tile source={src.id} solid />
                   <span className="min-w-0 flex-1 truncate text-[12.5px]">Xóa khỏi Google Calendar?</span>
                   <button
                     onClick={() => setAsking(null)}
-                    className="h-7 rounded-full px-2.5 text-[12.5px] font-medium text-[#667085] transition hover:bg-[#F3F6FC] hover:text-[#0F1424]"
+                    className="h-7 rounded-full px-2.5 text-[12.5px] font-medium text-muted transition hover:bg-soft hover:text-ink"
                   >
                     Hủy
                   </button>
@@ -359,19 +359,19 @@ export default function App({ initial }: { initial: State }) {
               );
             }
             return (
-              <div key={src.id} className="flex items-center gap-3 rounded-2xl px-2 py-1.5">
+              <div key={src.id} className="flex items-center gap-3 rounded-2xl px-1.5 py-1.5">
                 <div
                   className="flex h-8 w-8 flex-none items-center justify-center rounded-xl transition-colors [&_svg]:h-4 [&_svg]:w-4"
-                  style={on ? { background: src.color, color: "#fff" } : { background: "#EAECF0", color: "#98A2B3" }}
+                  style={on ? { background: src.color, color: "#fff" } : { background: "rgb(var(--line))", color: "rgb(var(--faint))" }}
                 >
                   {src.icon}
                 </div>
                 <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
                   <span className="text-[13.5px] font-medium tracking-[-0.01em]">{src.label}</span>
                   {on && counts[src.id] > 0 && (
-                    <span className="text-[12px] tabular-nums text-[#98A2B3]">{counts[src.id]}</span>
+                    <span className="text-[12px] tabular-nums text-faint">{counts[src.id]}</span>
                   )}
-                  {stale && <span className="truncate text-[11.5px] text-[#B54708]">· {ago(seen)}</span>}
+                  {stale && <span className="truncate text-[11.5px] text-warn">· {ago(seen)}</span>}
                 </div>
                 <Switch
                   on={on}
@@ -387,10 +387,10 @@ export default function App({ initial }: { initial: State }) {
         <a
           href={`https://calendar.google.com/calendar/r?authuser=${encodeURIComponent(s.account?.email ?? "")}`}
           target="_blank"
-          className={`mt-3 flex h-11 items-center justify-center gap-1.5 rounded-full bg-white text-[14px] font-medium text-[#0F1424] transition hover:-translate-y-0.5 active:scale-[0.97] ${LIFT}`}
+          className={`mt-3 flex h-11 items-center justify-center gap-1.5 rounded-full bg-raised text-[14px] font-medium text-ink transition hover:-translate-y-0.5 active:scale-[0.97] ${LIFT}`}
         >
           Mở Google Calendar
-          <ExternalLinkRegular size={16} color="#4F7FEF" />
+          <ExternalLinkRegular size={16} color="currentColor" className="text-brand" />
         </a>
       </main>
     </div>
@@ -413,7 +413,7 @@ function Tile({ source, solid = false }: { source: Source; solid?: boolean }) {
 
 function Header({ children }: { children: ReactNode }) {
   return (
-    <header className="relative z-20 flex items-center justify-between py-3 pl-4 pr-3">
+    <header className="relative z-20 flex items-center justify-between px-6 py-3">
       <a href="https://unical.tadyuh.dev" target="_blank" className="flex items-center gap-2">
         <Buddy size={28} />
         <span className="text-[16px] font-semibold tracking-[-0.02em]">UniCal</span>
@@ -423,12 +423,13 @@ function Header({ children }: { children: ReactNode }) {
   );
 }
 
-// Flat page with two soft, blurred brand glows, like the website.
+// Flat page with two soft, blurred brand glows, like the website: blue drifting in from the top right toward
+// the middle, violet from the left, overlapping along the diagonal.
 function Glow() {
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-      <div className="absolute -right-20 -top-24 h-56 w-56 rounded-full bg-[#4F7FEF]/[0.14] blur-3xl" />
-      <div className="absolute -left-24 top-40 h-48 w-48 rounded-full bg-[#8B7CF6]/[0.08] blur-3xl" />
+      <div className="absolute -right-10 -top-10 h-64 w-64 rounded-full blur-3xl" style={{ background: "var(--glow-a)" }} />
+      <div className="absolute -left-10 top-48 h-56 w-56 rounded-full blur-3xl" style={{ background: "var(--glow-b)" }} />
     </div>
   );
 }
@@ -452,7 +453,7 @@ function Menu({
     return () => window.removeEventListener("keydown", esc);
   }, [open]);
   const item =
-    "flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] text-[#0F1424] transition hover:bg-[#F3F6FC] [&_svg]:h-4 [&_svg]:w-4";
+    "flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] text-ink transition hover:bg-soft [&_svg]:h-4 [&_svg]:w-4";
   const pick = (fn: () => void) => () => {
     setOpen(false);
     fn();
@@ -466,13 +467,13 @@ function Menu({
         aria-expanded={open}
         aria-haspopup="menu"
         className={`flex h-8 w-8 items-center justify-center rounded-full transition ${
-          account ? "ring-1 ring-[#4F7FEF]/15 hover:ring-2 hover:ring-[#4F7FEF]/25" : "bg-white/70 text-[#667085] hover:bg-white hover:text-[#0F1424]"
+          account ? "ring-1 ring-brand/15 hover:ring-2 hover:ring-brand/25" : "bg-raised/70 text-muted hover:bg-raised hover:text-ink"
         }`}
       >
         {account?.picture ? (
           <img src={account.picture} alt="" className="h-8 w-8 rounded-full" />
         ) : account ? (
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#EAF1FF] text-[12px] font-semibold text-[#4F7FEF]">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-soft text-[12px] font-semibold text-brand">
             {account.name.charAt(0).toUpperCase()}
           </span>
         ) : (
@@ -482,25 +483,25 @@ function Menu({
       {open && (
         <>
           <button aria-hidden tabIndex={-1} className="fixed inset-0 z-20 cursor-default" onClick={() => setOpen(false)} />
-          <div className={`absolute right-0 top-10 z-30 w-56 rounded-[20px] bg-white p-1.5 ${LIFT}`}>
+          <div className={`absolute right-0 top-10 z-30 w-56 rounded-[20px] bg-raised p-1.5 ${LIFT}`}>
             {account && (
-              <div className="mb-1 truncate border-b border-[#EAECF0] px-2.5 pb-2 pt-1 text-[12px] text-[#667085]">{account.email}</div>
+              <div className="mb-1 truncate border-b border-line px-2.5 pb-2 pt-1 text-[12px] text-muted">{account.email}</div>
             )}
             <button onClick={pick(onIcs)} className={item}>
-              <DownloadRegular color="#667085" />
+              <DownloadRegular color="currentColor" />
               Tải lịch (.ics)
             </button>
             <a href={REVIEW_URL} target="_blank" onClick={() => setOpen(false)} className={item}>
-              <StarRegular color="#667085" />
+              <StarRegular color="currentColor" />
               Đánh giá
             </a>
             <button onClick={pick(onDonate)} className={item}>
-              <HeartRegular color="#667085" />
+              <HeartRegular color="currentColor" />
               Ủng hộ
             </button>
             {account && (
               <button onClick={pick(onSignOut)} className={item}>
-                <ExitRegular color="#667085" />
+                <ExitRegular color="currentColor" />
                 Ngắt kết nối
               </button>
             )}
@@ -529,7 +530,7 @@ function Switch({
       aria-label={label}
       onClick={() => onChange(!on)}
       className="relative h-5 w-9 flex-none rounded-full transition-colors"
-      style={{ background: on ? color : "#E4E7EC" }}
+      style={{ background: on ? color : "rgb(var(--track))" }}
     >
       <span
         className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${on ? "left-[18px]" : "left-0.5"}`}
@@ -541,13 +542,13 @@ function Switch({
 function Donate({ onClose }: { onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="relative w-[360px] select-none overflow-hidden bg-white px-5 pb-6 pt-3 text-center text-[#0F1424]">
+    <div className="relative w-[360px] select-none overflow-hidden bg-page px-6 pb-6 pt-3 text-center text-ink">
       <Glow />
       <div className="relative flex justify-end">
         <button
           onClick={onClose}
           aria-label="Đóng"
-          className="flex h-8 w-8 items-center justify-center rounded-full text-[#667085] transition hover:bg-[#F3F6FC] hover:text-[#0F1424]"
+          className="flex h-8 w-8 items-center justify-center rounded-full text-muted transition hover:bg-soft hover:text-ink"
         >
           <CloseRegular className="h-[18px] w-[18px]" />
         </button>
@@ -555,22 +556,22 @@ function Donate({ onClose }: { onClose: () => void }) {
       <div className="relative">
         <Buddy mood="cheer" size={52} className="mx-auto -mb-3" />
         <img src="donate_qr.png" alt="" className={`relative mx-auto h-52 w-52 rounded-[24px] bg-white object-contain p-3 ${LIFT}`} />
-        <div className="mt-5 text-[12px] font-medium tracking-[0.04em] text-[#667085]">HUONG DAT HUY</div>
+        <div className="mt-5 text-[12px] font-medium tracking-[0.04em] text-muted">HUONG DAT HUY</div>
         <button
           onClick={() => {
             navigator.clipboard.writeText("8888070605");
             setCopied(true);
           }}
-          className="mx-auto mt-1.5 flex h-10 items-center gap-2 rounded-full bg-[#F3F6FC] px-4 text-[15px] font-semibold tabular-nums tracking-[0.02em] transition hover:bg-[#EAF1FF]"
+          className="mx-auto mt-1.5 flex h-10 items-center gap-2 rounded-full bg-soft px-4 text-[15px] font-semibold tabular-nums tracking-[0.02em] transition hover:bg-brand-soft"
         >
           8888070605
           {copied ? (
             <CheckRegular size={16} color="#16A34A" />
           ) : (
-            <CopyRegular size={16} color="#98A2B3" />
+            <CopyRegular size={16} color="currentColor" className="text-faint" />
           )}
         </button>
-        <p className="mt-3 text-[12.5px] text-[#667085]">Cảm ơn bạn nhiều 💙</p>
+        <p className="mt-3 text-[12.5px] text-muted">Cảm ơn bạn nhiều 💙</p>
       </div>
     </div>
   );
