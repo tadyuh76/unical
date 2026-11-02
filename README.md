@@ -2,7 +2,7 @@
 
 # UniCal
 
-Lịch học, lịch thi và deadline LMS của UEH tự động có trong Google Calendar.
+Lịch học, lịch thi và deadline LMS của UEH tự động đồng bộ với Google Calendar.
 
 [**Cài từ Chrome Web Store**](https://chromewebstore.google.com/detail/unical/fiennkdjfbpjomlbeeoadaibellmooac) · [unical.tadyuh.dev](https://unical.tadyuh.dev)
 
