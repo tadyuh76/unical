@@ -3,7 +3,7 @@ import { Buddy } from "@/buddy";
 import { atLocal, load, signInNeeded, type State } from "@/store";
 import type { Message, Source } from "@/types";
 import {
-  BookRegular,
+  MortarboardRegular,
   CheckRegular,
   CloseRegular,
   CopyRegular,
@@ -27,7 +27,7 @@ const REVIEW_URL =
   "https://chromewebstore.google.com/detail/unical/fiennkdjfbpjomlbeeoadaibellmooac/reviews";
 
 const SOURCES: { id: Source; label: string; color: string; icon: ReactNode; open: string }[] = [
-  { id: "classes", label: "Lịch học", color: "#4C7CF0", icon: <BookRegular />, open: PORTAL },
+  { id: "classes", label: "Lịch học", color: "#4C7CF0", icon: <MortarboardRegular />, open: PORTAL },
   { id: "exams", label: "Lịch thi", color: "#EF5350", icon: <PenRegular />, open: PORTAL },
   { id: "deadlines", label: "Deadline", color: "#F59E0B", icon: <Flag1Regular />, open: LMS },
 ];
