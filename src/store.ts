@@ -37,7 +37,7 @@ export interface State {
   who: Partial<Record<Site, string>>; // whose UEH data this is: student number, LMS user id
   doubt: Record<string, number>; // "classes|2026HKC" -> when a read first came back empty for a term with things ahead
   colors: Colors;
-  old: string; // the calendar UniCal 1.x made ("Lịch Học UEH") while it's still in Google, else ""
+  oldCalendars: { id: string; name: string }[]; // calendars UniCal 1.x made that are still in Google
 }
 
 export const DEFAULTS: State = {
@@ -56,7 +56,7 @@ export const DEFAULTS: State = {
   who: {},
   doubt: {},
   colors: { classes: "7", exams: "11", deadlines: "5" }, // classes blue (Lông công), exams red (Cà chua), deadlines yellow (Chuối)
-  old: "",
+  oldCalendars: [],
 };
 
 export async function load(): Promise<State> {

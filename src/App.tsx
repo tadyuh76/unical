@@ -98,10 +98,10 @@ export default function App({ initial }: { initial: State }) {
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<"main" | "donate" | "colors">("main");
   const tone = toneOf(s.colors);
-  // The 1.x calendar may have been deleted since the last sync: look again so the reminder goes away.
+  // A 1.x calendar may have been deleted since the last sync: look again so the reminder goes away.
   useEffect(() => {
-    if (initial.old) send({ type: "OLD" });
-  }, [initial.old]);
+    if (initial.oldCalendars.length) send({ type: "OLD" });
+  }, [initial.oldCalendars.length]);
   const [asking, setAsking] = useState<Source | null>(null);
 
   const connected = Boolean(s.account) && s.problem !== "auth" && s.problem !== "scope";
@@ -300,13 +300,15 @@ export default function App({ initial }: { initial: State }) {
       </Header>
 
       <main className="relative px-3 pb-3">
-        {s.old && s.account && (
+        {s.oldCalendars.length > 0 && s.account && (
           <a
-            href={calendarSettings(s.old, s.account.email)}
+            href={calendarSettings(s.oldCalendars[0]!.id, s.account.email)}
             target="_blank"
             className="mb-2 flex items-center gap-2 rounded-2xl bg-warn-bg px-3 py-2.5 text-[12.5px] text-warn-ink"
           >
-            <span className="min-w-0 flex-1 truncate">Lịch cũ “Lịch Học UEH” đang bị trùng</span>
+            <span className="min-w-0 flex-1 truncate">
+              {s.oldCalendars.length > 1 ? `${s.oldCalendars.length} lịch cũ đang bị trùng` : `Lịch cũ “${s.oldCalendars[0]!.name}” đang bị trùng`}
+            </span>
             <span className="flex-none font-semibold underline underline-offset-2">Xoá</span>
           </a>
         )}

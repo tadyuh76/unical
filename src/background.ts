@@ -214,7 +214,7 @@ async function ownEvents(call: Call, id: string): Promise<Owned | null> {
 }
 
 // The ids of the calendars in the student's Google account, by name. Null without the permission to see them.
-type Listed = { id: string; summary?: string }[];
+type Listed = { id: string; summary?: string; description?: string }[];
 async function listCalendars(call: Call): Promise<Listed | null> {
   const { web } = await chrome.storage.session.get("web");
   if (!web?.list) return null;
@@ -224,7 +224,7 @@ async function listCalendars(call: Call): Promise<Listed | null> {
     const query = new URLSearchParams({
       minAccessRole: "owner",
       showHidden: "true",
-      fields: "items(id,summary),nextPageToken",
+      fields: "items(id,summary,description),nextPageToken",
       ...(page ? { pageToken: page } : {}),
     });
     const res = await call("GET", `/users/me/calendarList?${query}`);
@@ -236,11 +236,15 @@ async function listCalendars(call: Call): Promise<Listed | null> {
   return items;
 }
 
-// UniCal 1.x put classes into a calendar of its own, "Lịch Học UEH", so after updating every class shows twice.
-// UniCal only manages the calendars it makes itself, so it can't remove that one; the popup links to it instead.
-const OLD_CALENDAR = "lịch học ueh";
-const oldCalendar = (listed: Listed) =>
-  listed.find((c) => (c.summary ?? "").normalize("NFC").trim().toLowerCase() === OLD_CALENDAR)?.id ?? "";
+// UniCal 1.x put classes, exams and deadlines into calendars of its own, so after updating everything shows twice.
+// It named them "Lịch Học UEH" by default (students could add to the name) and described each one as
+// "<name> - Tạo bởi UniCal". UniCal only manages the calendars it makes itself, so it can't remove those; the
+// popup links to each one instead.
+const plain = (text?: string) => (text ?? "").normalize("NFC").trim().toLowerCase();
+const oldCalendars = (listed: Listed) =>
+  listed
+    .filter((c) => plain(c.description).endsWith("- tạo bởi unical") || /^lịch (học|thi) ueh/.test(plain(c.summary)))
+    .map((c) => ({ id: c.id, name: c.summary ?? "" }));
 
 // The calendar to write into. Usually the one from last time. Otherwise, and whenever the account holds more
 // than one of this kind (UniCal installed again, another computer, an earlier connection), UniCal keeps one and
@@ -413,7 +417,7 @@ async function runSync(): Promise<SyncReport> {
   }
   await remember(state.account.email, earlier, state.calendars);
   if (problem === "auth") return lost();
-  await save({ problem, ...(problem ? {} : { synced: Date.now() }), ...(listed ? { old: oldCalendar(listed) } : {}) });
+  await save({ problem, ...(problem ? {} : { synced: Date.now() }), ...(listed ? { oldCalendars: oldCalendars(listed) } : {}) });
   await badge();
   return { changed, connected: true, nudge: false };
 }
@@ -743,13 +747,13 @@ async function connect() {
   return true;
 }
 
-// The popup opened while the old calendar was still there: look again, so it stops asking once it's deleted.
+// The popup opened while old calendars were still there: look again, so it stops asking once they're deleted.
 async function checkOld() {
-  const { account, old } = await load();
-  if (!account || !old) return false;
+  const { account, oldCalendars: old } = await load();
+  if (!account || !old.length) return false;
   try {
     const listed = await listCalendars(google(await getToken(false, account.email), account.email));
-    if (listed) await save({ old: oldCalendar(listed) });
+    if (listed) await save({ oldCalendars: oldCalendars(listed) });
   } catch {
     // Offline or signed out: the next sync looks again.
   }
