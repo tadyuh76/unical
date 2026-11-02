@@ -55,7 +55,7 @@ export const DEFAULTS: State = {
   busy: 0,
   who: {},
   doubt: {},
-  colors: { classes: "course", exams: "11", deadlines: "6" },
+  colors: { classes: "7", exams: "11", deadlines: "6" }, // classes Lông công, exams Cà chua, deadlines Quýt
   old: "",
 };
 
