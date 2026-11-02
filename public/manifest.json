@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "UniCal",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "Lịch học, lịch thi UEH và deadline LMS tự vào Google Calendar. Trường đổi gì, lịch đổi theo.",
   "homepage_url": "https://unical.tadyuh.dev",
   "action": {

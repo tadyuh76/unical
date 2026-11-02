@@ -173,8 +173,8 @@ export default function App({ initial }: { initial: State }) {
   if (!connected) {
     return (
       <div
-        className="relative flex h-[540px] w-[360px] select-none flex-col bg-signin bg-cover bg-bottom text-ink"
-        style={{ backgroundImage: "url(art/signin.webp)" }}
+        className="relative flex w-[360px] select-none flex-col bg-signin bg-cover text-ink"
+        style={{ backgroundImage: "url(art/signin.webp)", backgroundPosition: "50% calc(100% + 34px)" }}
       >
         <Header>{menu}</Header>
         <section className={`relative z-10 mx-3 mt-1 rounded-[24px] bg-raised p-4 text-center ${LIFT}`}>
@@ -224,9 +224,12 @@ export default function App({ initial }: { initial: State }) {
             </p>
           )}
         </section>
-        <div className="pointer-events-none absolute left-[56px] top-[328px] w-[68px]">
-          <span className="absolute bottom-0 left-1/2 h-2 w-14 -translate-x-1/2 rounded-[50%] bg-[#0B7285]/25" />
-          <Buddy size={68} look={{ x: 0.55, y: -0.75 }} className="relative block motion-safe:animate-bob" />
+        {/* The scene starts right under the card: hills, the path and Buddy on the cliff. */}
+        <div className="relative h-[260px]">
+          <div className="pointer-events-none absolute bottom-[110px] left-[56px] w-[68px]">
+            <span className="absolute bottom-0 left-1/2 h-2 w-14 -translate-x-1/2 rounded-[50%] bg-[#0B7285]/25" />
+            <Buddy size={68} look={{ x: 0.55, y: -0.75 }} className="relative block motion-safe:animate-bob" />
+          </div>
         </div>
       </div>
     );
