@@ -119,7 +119,7 @@ export default function App({ initial }: { initial: State }) {
         key: e.key,
         source: "exams" as Source,
         title: e.subject,
-        detail: handIn(e) ? `Nộp bài ${e.format.toLowerCase()}` : onlineExam(e) ? "Trực tuyến" : e.room ? roomText(e.room) : e.format,
+        detail: handIn(e) ? e.kind || e.format : onlineExam(e) ? "Trực tuyến" : e.room ? roomText(e.room) : e.format,
         at: atLocal(`${e.date}T${e.time || "00:00"}`),
         allDay: !e.time,
         url: "https://student.ueh.edu.vn/Home/Exam",

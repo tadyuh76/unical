@@ -73,7 +73,7 @@ const nowhere = (room: string) => /^(online|lms|ngoai\s*khoa)$/i.test(roomId(roo
 export const onlineExam = (e: Exam) => /^o$/i.test(e.campus.trim()) || /cơ sở ảo/i.test(e.note);
 
 // An essay or project "exam" with only a date and no sitting time: that date is when the work is due.
-export const handIn = (e: Exam) => !e.time && /tiểu luận|dự án|bài tập/i.test(e.format);
+export const handIn = (e: Exam) => !e.time && /tiểu luận|dự án|bài tập/i.test(e.format.normalize("NFC"));
 
 // UEH rooms start with their campus letter: "N1-406" is at campus N, "B2-502" at campus B.
 const campusOf = (room: string) => roomId(room).match(/^([A-Z])\d/)?.[1] ?? "";
@@ -209,12 +209,13 @@ function examEvents(exams: Exam[]): CalendarEvent[] {
       key: e.key,
       start: atLocal(start),
       body: {
-        summary: `${handIn(e) ? "Nộp bài" : "Thi"} · ${e.subject}`,
+        // A hand-in exam is named by the portal's own label ("[Thi kết thúc học phần] CRM"); its format goes below.
+        summary: handIn(e) ? `[${e.kind || "Thi"}] ${e.subject}` : `Thi · ${e.subject}`,
         location: online ? "Trực tuyến" : where.location,
         description: lines([
           e.sbd && `SBD: ${e.sbd}`,
-          [e.kind, e.attempt].filter(Boolean).join(" · "),
-          e.format && `Hình thức: ${e.format}`,
+          e.format && `Hình thức thi: ${e.format}`,
+          [handIn(e) ? "" : e.kind, e.attempt].filter(Boolean).join(" · "),
           online && e.room && `Phòng: ${e.room}`,
           !online && where.address,
           !online && e.note && e.note.replace(/\s*\[Địa chỉ cũ:[^\]]*\]/i, "").trim() !== e.address && `Ghi chú: ${e.note}`,
