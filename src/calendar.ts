@@ -1,7 +1,7 @@
 // Turns timetable sessions, exams and LMS deadlines into calendar events.
 // The same events feed Google Calendar sync and the .ics download.
 import type { ClassSession, Deadline, Exam, Source } from "@/types";
-import { atLocal, toLocal, type State } from "@/store";
+import { atLocal, toLocal, type Colors, type State } from "@/store";
 
 export const TIMEZONE = "Asia/Ho_Chi_Minh";
 
@@ -39,12 +39,24 @@ export interface CalendarEvent {
 }
 
 const EXAM_MINUTES = 90;
-// Google event colors. UniCal may only touch its own calendars' events, not the
-// calendar list, so colour is set per event: exams Tomato, deadlines Tangerine,
-// and classes by subject from the rest, ordered so neighbours look different.
-const EXAM_COLOR = "11";
-const DEADLINE_COLOR = "6";
-const PALETTE = ["7", "2", "9", "3", "5", "10", "1", "4"];
+// Google Calendar's event colours, as its colour picker shows them. UniCal may only touch its own calendars'
+// events, not the calendar list, so colour is set per event, from the student's choice. Graphite is kept for
+// sessions UEH called off.
+export const COLORS = [
+  { id: "11", name: "Cà chua", hex: "#D50000" },
+  { id: "4", name: "Hồng hạc", hex: "#E67C73" },
+  { id: "6", name: "Quýt", hex: "#F4511E" },
+  { id: "5", name: "Chuối", hex: "#F6BF26" },
+  { id: "2", name: "Xô thơm", hex: "#33B679" },
+  { id: "10", name: "Húng quế", hex: "#0B8043" },
+  { id: "7", name: "Lông công", hex: "#039BE5" },
+  { id: "9", name: "Việt quất", hex: "#3F51B5" },
+  { id: "1", name: "Oải hương", hex: "#7986CB" },
+  { id: "3", name: "Nho", hex: "#8E24AA" },
+];
+export const colorHex = (id: string) => COLORS.find((c) => c.id === id)?.hex ?? "#4C7CF0";
+// One colour per course: taken in this order, skipping the exam and deadline colours, so neighbours look different.
+const COURSE_ORDER = ["7", "2", "9", "3", "5", "10", "1", "4", "11", "6"];
 const OFF_COLOR = "8"; // Graphite: a session UEH marked "NGHỈ" (no class that day)
 const LHP = /\d{2}[DGC]\d[A-Z]{2,4}\d{8}/g;
 
@@ -130,9 +142,10 @@ export function courseName(raw: string, subjects: Record<string, string>): strin
   return /\p{L}{4,}/u.test(tidy) ? tidy : full;
 }
 
-// Colours go by the term's whole subject list (every subject UniCal ever read for it, not just the sessions
-// still kept), so a subject keeps its colour all term long.
-function classEvents(sessions: ClassSession[], known: Record<string, string>): CalendarEvent[] {
+// Each class's colour, by "term|subject". One colour for all, or one per course: those go by the term's whole
+// subject list (every subject UniCal ever read for it, not just the sessions still kept), so a subject keeps
+// its colour all term long.
+export function classColors(sessions: ClassSession[], known: Record<string, string>, choice: Colors): Map<string, string> {
   const colors = new Map<string, string>();
   const terms = new Map<string, Set<string>>();
   sessions.forEach((s) => {
@@ -144,14 +157,19 @@ function classEvents(sessions: ClassSession[], known: Record<string, string>): C
     const prefix = term.slice(2, 4) + term.slice(-1);
     for (const [lhp, subject] of Object.entries(known)) if (lhp.startsWith(prefix)) subjects.add(subject);
   });
+  const palette = COURSE_ORDER.filter((c) => c !== choice.exams && c !== choice.deadlines);
   terms.forEach((subjects, term) =>
     [...subjects]
       .sort((a, b) => a.localeCompare(b, "vi"))
       .forEach((subject, i) =>
-        colors.set(`${term}|${subject}`, PALETTE[i % PALETTE.length]!)
+        colors.set(`${term}|${subject}`, choice.classes === "course" ? palette[i % palette.length]! : choice.classes)
       )
   );
+  return colors;
+}
 
+function classEvents(sessions: ClassSession[], known: Record<string, string>, choice: Colors): CalendarEvent[] {
+  const colors = classColors(sessions, known, choice);
   return sessions.map((s) => {
     if (isOff(s)) {
       return {
@@ -198,7 +216,7 @@ function classEvents(sessions: ClassSession[], known: Record<string, string>): C
   });
 }
 
-function examEvents(exams: Exam[]): CalendarEvent[] {
+function examEvents(exams: Exam[], color: string): CalendarEvent[] {
   return exams.map((e) => {
     const start = `${e.date}T${e.time || "00:00"}`;
     const [h = 0, m = 0] = (e.time || "00:00").split(":").map(Number);
@@ -221,7 +239,7 @@ function examEvents(exams: Exam[]): CalendarEvent[] {
           `LHP: ${e.lhp}`,
         ]),
         start: e.time ? at(start) : { date: e.date },
-        colorId: EXAM_COLOR,
+        colorId: color,
         end: e.time
           ? at(toLocal(atLocal(start) + EXAM_MINUTES * 60_000))
           : { date: nextDay(e.date) },
@@ -239,7 +257,8 @@ function examEvents(exams: Exam[]): CalendarEvent[] {
 
 function deadlineEvents(
   deadlines: Deadline[],
-  subjects: Record<string, string>
+  subjects: Record<string, string>,
+  color: string
 ): CalendarEvent[] {
   return deadlines.map((d) => {
     const course = courseName(d.course, subjects);
@@ -252,7 +271,7 @@ function deadlineEvents(
         description: lines([course, d.url]),
         start: time,
         end: time,
-        colorId: DEADLINE_COLOR,
+        colorId: color,
         transparency: "transparent",
         reminders: d.done
           ? { useDefault: false, overrides: [] }
@@ -270,9 +289,9 @@ function deadlineEvents(
 }
 
 export function eventsFor(source: Source, state: State): CalendarEvent[] {
-  if (source === "classes") return classEvents(state.data.classes, state.subjects);
-  if (source === "exams") return examEvents(state.data.exams);
-  return deadlineEvents(state.data.deadlines, state.subjects);
+  if (source === "classes") return classEvents(state.data.classes, state.subjects, state.colors);
+  if (source === "exams") return examEvents(state.data.exams, state.colors.exams);
+  return deadlineEvents(state.data.deadlines, state.subjects, state.colors.deadlines);
 }
 
 // ---- .ics ----

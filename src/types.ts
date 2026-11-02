@@ -1,5 +1,6 @@
 // Shared shapes passed between the UEH pages, the background worker and the popup.
 // Times without a zone are Vietnam local time ("YYYY-MM-DDTHH:mm").
+import type { Colors } from "@/store";
 
 export type Source = "classes" | "exams" | "deadlines";
 
@@ -107,5 +108,7 @@ export type Message =
   | { type: "DISCONNECT" }
   | { type: "SYNC" }
   | { type: "TOGGLE"; source: Source; on: boolean }
+  | { type: "COLORS"; colors: Colors }
+  | { type: "OLD" }
   | { type: "ICS" }
   | { type: "OPEN_POPUP" };

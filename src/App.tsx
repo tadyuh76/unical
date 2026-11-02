@@ -1,6 +1,6 @@
-import { courseName, handIn, isOff, onlineExam, roomLabel, roomText } from "@/calendar";
+import { classColors, COLORS, colorHex, courseName, handIn, isOff, onlineExam, roomLabel, roomText } from "@/calendar";
 import { Buddy } from "@/buddy";
-import { atLocal, load, signInNeeded, type State } from "@/store";
+import { atLocal, load, signInNeeded, type Colors, type State } from "@/store";
 import type { Message, Source } from "@/types";
 import {
   MortarboardRegular,
@@ -12,7 +12,9 @@ import {
   ExternalLinkRegular,
   Flag1Regular,
   HeartRegular,
+  LeftRegular,
   More1Regular,
+  PaletteRegular,
   PenRegular,
   Refresh2Regular,
   StarRegular,
@@ -26,11 +28,24 @@ const LMS = "https://lms.ueh.edu.vn/my/";
 const REVIEW_URL =
   "https://chromewebstore.google.com/detail/unical/fiennkdjfbpjomlbeeoadaibellmooac/reviews";
 
-const SOURCES: { id: Source; label: string; color: string; icon: ReactNode; open: string }[] = [
-  { id: "classes", label: "Lịch học", color: "#4C7CF0", icon: <MortarboardRegular />, open: PORTAL },
-  { id: "exams", label: "Lịch thi", color: "#EF5350", icon: <PenRegular />, open: PORTAL },
-  { id: "deadlines", label: "Deadline", color: "#F59E0B", icon: <Flag1Regular />, open: LMS },
+const SOURCES: { id: Source; label: string; icon: ReactNode; open: string }[] = [
+  { id: "classes", label: "Lịch học", icon: <MortarboardRegular />, open: PORTAL },
+  { id: "exams", label: "Lịch thi", icon: <PenRegular />, open: PORTAL },
+  { id: "deadlines", label: "Deadline", icon: <Flag1Regular />, open: LMS },
 ];
+
+const BRAND = "#4C7CF0";
+// Each kind's colour in the popup is the one its events get in Google Calendar. Classes coloured per course
+// show the brand blue as a kind, and each course's own colour on its row.
+const toneOf = (colors: Colors): Record<Source, string> => ({
+  classes: colors.classes === "course" ? BRAND : colorHex(colors.classes),
+  exams: colorHex(colors.exams),
+  deadlines: colorHex(colors.deadlines),
+});
+
+// Google's settings page for one calendar, where it can be deleted.
+const calendarSettings = (id: string, email: string) =>
+  `https://calendar.google.com/calendar/r/settings/calendar/${btoa(id).replace(/=+$/, "")}?authuser=${encodeURIComponent(email)}`;
 
 // Soft brand-tinted shadows only, never grey or black.
 const LIFT = "shadow-lift ring-1 ring-edge";
@@ -81,7 +96,12 @@ function useStoredState(initial: State): State {
 export default function App({ initial }: { initial: State }) {
   const s = useStoredState(initial);
   const [busy, setBusy] = useState(false);
-  const [view, setView] = useState<"main" | "donate">("main");
+  const [view, setView] = useState<"main" | "donate" | "colors">("main");
+  const tone = toneOf(s.colors);
+  // The 1.x calendar may have been deleted since the last sync: look again so the reminder goes away.
+  useEffect(() => {
+    if (initial.old) send({ type: "OLD" });
+  }, [initial.old]);
   const [asking, setAsking] = useState<Source | null>(null);
 
   const connected = Boolean(s.account) && s.problem !== "auth" && s.problem !== "scope";
@@ -108,6 +128,7 @@ export default function App({ initial }: { initial: State }) {
         ? [{
             key: nextClass.key,
             source: "classes" as Source,
+            color: colorHex(classColors(s.data.classes, s.subjects, s.colors).get(`${nextClass.term}|${nextClass.subject}`) ?? ""),
             title: nextClass.subject,
             detail: nextClass.room ? roomText(nextClass.room) : /^t[aậ]p trung$/i.test(nextClass.mode.trim()) ? "" : roomLabel(nextClass.mode),
             at: atLocal(nextClass.start),
@@ -118,6 +139,7 @@ export default function App({ initial }: { initial: State }) {
       ...(on.exams ? s.data.exams : []).map((e) => ({
         key: e.key,
         source: "exams" as Source,
+        color: tone.exams,
         title: e.subject,
         detail: handIn(e) ? e.kind || e.format : onlineExam(e) ? "Trực tuyến" : e.room ? roomText(e.room) : e.format,
         at: atLocal(`${e.date}T${e.time || "00:00"}`),
@@ -129,6 +151,7 @@ export default function App({ initial }: { initial: State }) {
         .map((d) => ({
           key: d.id,
           source: "deadlines" as Source,
+          color: tone.deadlines,
           title: d.title,
           detail: courseName(d.course, s.subjects),
           at: d.due,
@@ -139,7 +162,7 @@ export default function App({ initial }: { initial: State }) {
       .filter((i) => (i.allDay ? i.at + 86400_000 : i.at) > now)
       .sort((a, b) => a.at - b.at)
       .slice(0, 5);
-  }, [s.data, s.subjects, s.settings]);
+  }, [s.data, s.subjects, s.settings, s.colors]);
 
   const run = async (message: Message) => {
     setBusy(true);
@@ -160,12 +183,15 @@ export default function App({ initial }: { initial: State }) {
   };
 
   if (view === "donate") return <Donate onClose={() => setView("main")} />;
+  if (view === "colors")
+    return <ColorPicker colors={s.colors} onChange={(colors) => send({ type: "COLORS", colors })} onClose={() => setView("main")} />;
 
   const menu = (
     <Menu
       account={s.account}
       onIcs={downloadIcs}
       onDonate={() => setView("donate")}
+      onColors={() => setView("colors")}
       onSignOut={() => run({ type: "DISCONNECT" })}
     />
   );
@@ -183,7 +209,7 @@ export default function App({ initial }: { initial: State }) {
               <div
                 key={src.id}
                 className="relative flex items-center gap-1.5 rounded-full py-1.5 pl-2 pr-3 text-[12px] font-medium [&_svg]:h-3.5 [&_svg]:w-3.5"
-                style={{ background: `${src.color}14`, color: src.color }}
+                style={{ background: `${tone[src.id]}14`, color: tone[src.id] }}
               >
                 {src.icon}
                 <span className="text-ink">{src.label}</span>
@@ -274,6 +300,16 @@ export default function App({ initial }: { initial: State }) {
       </Header>
 
       <main className="relative px-3 pb-3">
+        {s.old && s.account && (
+          <a
+            href={calendarSettings(s.old, s.account.email)}
+            target="_blank"
+            className="mb-2 flex items-center gap-2 rounded-2xl bg-warn-bg px-3 py-2.5 text-[12.5px] text-warn-ink"
+          >
+            <span className="min-w-0 flex-1 truncate">Lịch cũ “Lịch Học UEH” đang bị trùng</span>
+            <span className="flex-none font-semibold underline underline-offset-2">Xoá</span>
+          </a>
+        )}
         {signIn.length > 0 && (
           <p className="mb-2 rounded-2xl bg-warn-bg px-3 py-2.5 text-[12.5px] leading-relaxed text-warn-ink">
             {everRead ? "Đăng nhập lại" : "Đăng nhập"}{" "}
@@ -293,7 +329,7 @@ export default function App({ initial }: { initial: State }) {
             {upcoming.map((item) => (
               <li key={item.key}>
                 <a href={item.url} target="_blank" title={item.title} className="flex items-center gap-3 rounded-2xl px-3 py-2 transition hover:bg-soft">
-                  <Tile source={item.source} />
+                  <Tile source={item.source} color={item.color} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13.5px] font-medium tracking-[-0.01em]">{item.title}</span>
                     <span className="block truncate text-[11.5px] text-muted">
@@ -341,7 +377,7 @@ export default function App({ initial }: { initial: State }) {
             if (asking === src.id) {
               return (
                 <div key={src.id} className="flex items-center gap-2 rounded-2xl bg-raised px-1.5 py-1.5">
-                  <Tile source={src.id} solid />
+                  <Tile source={src.id} color={tone[src.id]} solid />
                   <span className="min-w-0 flex-1 truncate text-[12.5px]">Xóa khỏi Google Calendar?</span>
                   <button
                     onClick={() => setAsking(null)}
@@ -365,7 +401,7 @@ export default function App({ initial }: { initial: State }) {
               <div key={src.id} className="flex items-center gap-3 rounded-2xl px-1.5 py-1.5">
                 <div
                   className="flex h-8 w-8 flex-none items-center justify-center rounded-xl transition-colors [&_svg]:h-4 [&_svg]:w-4"
-                  style={on ? { background: src.color, color: "#fff" } : { background: "rgb(var(--line))", color: "rgb(var(--faint))" }}
+                  style={on ? { background: tone[src.id], color: "#fff" } : { background: "rgb(var(--line))", color: "rgb(var(--faint))" }}
                 >
                   {src.icon}
                 </div>
@@ -378,7 +414,7 @@ export default function App({ initial }: { initial: State }) {
                 </div>
                 <Switch
                   on={on}
-                  color={src.color}
+                  color={tone[src.id]}
                   label={src.label}
                   onChange={(value) => (!value && s.calendars[src.id] ? setAsking(src.id) : toggle(value))}
                 />
@@ -402,12 +438,12 @@ export default function App({ initial }: { initial: State }) {
 
 // What kind of item a row is, by icon as well as colour.
 // `solid`: the filled look of the switch rows.
-function Tile({ source, solid = false }: { source: Source; solid?: boolean }) {
+function Tile({ source, color, solid = false }: { source: Source; color: string; solid?: boolean }) {
   const src = SOURCES.find((x) => x.id === source)!;
   return (
     <span
       className="flex h-8 w-8 flex-none items-center justify-center rounded-xl [&_svg]:h-4 [&_svg]:w-4"
-      style={solid ? { background: src.color, color: "#fff" } : { background: `${src.color}1A`, color: src.color }}
+      style={solid ? { background: color, color: "#fff" } : { background: `${color}1A`, color }}
     >
       {src.icon}
     </span>
@@ -441,11 +477,13 @@ function Menu({
   account,
   onIcs,
   onDonate,
+  onColors,
   onSignOut,
 }: {
   account: State["account"];
   onIcs: () => void;
   onDonate: () => void;
+  onColors: () => void;
   onSignOut: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -490,6 +528,10 @@ function Menu({
             {account && (
               <div className="mb-1 truncate border-b border-line px-2.5 pb-2 pt-1 text-[12px] text-muted">{account.email}</div>
             )}
+            <button onClick={pick(onColors)} className={item}>
+              <PaletteRegular color="currentColor" />
+              Màu sắc
+            </button>
             <button onClick={pick(onIcs)} className={item}>
               <DownloadRegular color="currentColor" />
               Tải lịch (.ics)
@@ -539,6 +581,77 @@ function Switch({
         className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${on ? "left-[18px]" : "left-0.5"}`}
       />
     </button>
+  );
+}
+
+// Event colours, from Google Calendar's own list. Classes can instead take one colour per course.
+const COURSE_DOT = "conic-gradient(#039BE5, #33B679, #F6BF26, #E67C73, #8E24AA, #3F51B5, #039BE5)";
+
+function ColorPicker({ colors, onChange, onClose }: { colors: Colors; onChange: (colors: Colors) => void; onClose: () => void }) {
+  const tone = toneOf(colors);
+  const perCourse = colors.classes === "course";
+  return (
+    <div className="relative w-[360px] select-none overflow-hidden bg-page pb-3 text-ink">
+      <Glow />
+      <header className="relative flex items-center gap-1 px-3 py-3">
+        <button
+          onClick={onClose}
+          aria-label="Quay lại"
+          className="flex h-8 w-8 items-center justify-center rounded-full text-muted transition hover:bg-soft hover:text-ink"
+        >
+          <LeftRegular className="h-[18px] w-[18px]" />
+        </button>
+        <span className="text-[15px] font-semibold tracking-[-0.01em]">Màu sắc</span>
+      </header>
+      <section className="relative mx-3 rounded-[20px] bg-soft p-1.5">
+        {SOURCES.map((src) => {
+          const value = colors[src.id];
+          return (
+            <div key={src.id} className="rounded-2xl px-1.5 pb-2.5 pt-1.5">
+              <div className="flex h-8 items-center gap-3">
+                <Tile source={src.id} color={tone[src.id]} solid />
+                <span className="text-[13.5px] font-medium tracking-[-0.01em]">{src.label}</span>
+                {src.id === "classes" ? (
+                  <button
+                    aria-pressed={perCourse}
+                    onClick={() => onChange({ ...colors, classes: "course" })}
+                    className={`ml-auto flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium transition ${
+                      perCourse ? `bg-raised text-ink ${LIFT}` : "text-muted hover:bg-raised/70 hover:text-ink"
+                    }`}
+                  >
+                    <span className="h-3 w-3 rounded-full" style={{ background: COURSE_DOT }} />
+                    Mỗi môn một màu
+                  </button>
+                ) : (
+                  <span className="ml-auto text-[12px] text-muted">{COLORS.find((c) => c.id === value)?.name}</span>
+                )}
+              </div>
+              <div role="radiogroup" aria-label={src.label} className="mt-2.5 flex justify-between px-1">
+                {COLORS.map((c) => {
+                  const picked = c.id === value;
+                  return (
+                    <button
+                      key={c.id}
+                      role="radio"
+                      aria-checked={picked}
+                      aria-label={c.name}
+                      title={c.name}
+                      onClick={() => onChange({ ...colors, [src.id]: c.id })}
+                      className={`flex h-[22px] w-[22px] items-center justify-center rounded-full transition hover:scale-110 ${
+                        picked ? "ring-2 ring-offset-2 ring-offset-soft" : ""
+                      }`}
+                      style={{ background: c.hex, ["--tw-ring-color" as string]: c.hex }}
+                    >
+                      {picked && <CheckRegular color="#fff" className="h-3 w-3" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </section>
+    </div>
   );
 }
 

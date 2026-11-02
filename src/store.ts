@@ -13,6 +13,14 @@ export interface CalendarState {
   events: Record<string, { h: string; s: number }>;
 }
 
+// Event colours, as Google Calendar colour ids ("1"–"11"). Classes either take one colour per course or one
+// colour for all of them.
+export interface Colors {
+  classes: "course" | string;
+  exams: string;
+  deadlines: string;
+}
+
 export interface State {
   data: { classes: ClassSession[]; exams: Exam[]; deadlines: Deadline[] };
   subjects: Record<string, string>; // class section (LHP) -> subject name
@@ -28,6 +36,8 @@ export interface State {
   busy: number; // when the running read/sync started, 0 when idle
   who: Partial<Record<Site, string>>; // whose UEH data this is: student number, LMS user id
   doubt: Record<string, number>; // "classes|2026HKC" -> when a read first came back empty for a term with things ahead
+  colors: Colors;
+  old: string; // the calendar UniCal 1.x made ("Lịch Học UEH") while it's still in Google, else ""
 }
 
 export const DEFAULTS: State = {
@@ -45,6 +55,8 @@ export const DEFAULTS: State = {
   busy: 0,
   who: {},
   doubt: {},
+  colors: { classes: "course", exams: "11", deadlines: "6" },
+  old: "",
 };
 
 export async function load(): Promise<State> {

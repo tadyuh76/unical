@@ -236,6 +236,12 @@ async function listCalendars(call: Call): Promise<Listed | null> {
   return items;
 }
 
+// UniCal 1.x put classes into a calendar of its own, "Lịch Học UEH", so after updating every class shows twice.
+// UniCal only manages the calendars it makes itself, so it can't remove that one; the popup links to it instead.
+const OLD_CALENDAR = "lịch học ueh";
+const oldCalendar = (listed: Listed) =>
+  listed.find((c) => (c.summary ?? "").normalize("NFC").trim().toLowerCase() === OLD_CALENDAR)?.id ?? "";
+
 // The calendar to write into. Usually the one from last time. Otherwise, and whenever the account holds more
 // than one of this kind (UniCal installed again, another computer, an earlier connection), UniCal keeps one and
 // deletes the other copies: first one the student added events of their own to, then the one with the most
@@ -407,7 +413,7 @@ async function runSync(): Promise<SyncReport> {
   }
   await remember(state.account.email, earlier, state.calendars);
   if (problem === "auth") return lost();
-  await save({ problem, ...(problem ? {} : { synced: Date.now() }) });
+  await save({ problem, ...(problem ? {} : { synced: Date.now() }), ...(listed ? { old: oldCalendar(listed) } : {}) });
   await badge();
   return { changed, connected: true, nudge: false };
 }
@@ -737,6 +743,19 @@ async function connect() {
   return true;
 }
 
+// The popup opened while the old calendar was still there: look again, so it stops asking once it's deleted.
+async function checkOld() {
+  const { account, old } = await load();
+  if (!account || !old) return false;
+  try {
+    const listed = await listCalendars(google(await getToken(false, account.email), account.email));
+    if (listed) await save({ old: oldCalendar(listed) });
+  } catch {
+    // Offline or signed out: the next sync looks again.
+  }
+  return true;
+}
+
 async function disconnect() {
   const { account } = await load();
   try {
@@ -830,6 +849,12 @@ async function handle(message: Message): Promise<unknown> {
       task(() => (message.on ? refreshInBackground() : runSync()));
       return true;
     }
+    case "COLORS":
+      await save({ colors: message.colors });
+      task(() => runSync());
+      return true;
+    case "OLD":
+      return task(checkOld);
     case "ICS":
       return ics();
     case "OPEN_POPUP":
