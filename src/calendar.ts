@@ -209,13 +209,12 @@ function examEvents(exams: Exam[]): CalendarEvent[] {
       key: e.key,
       start: atLocal(start),
       body: {
-        // A hand-in exam is named by the portal's own label ("[Thi kết thúc học phần] CRM"); its format goes below.
-        summary: handIn(e) ? `[${e.kind || "Thi"}] ${e.subject}` : `Thi · ${e.subject}`,
+        summary: `Thi · ${e.subject}`,
         location: online ? "Trực tuyến" : where.location,
         description: lines([
           e.sbd && `SBD: ${e.sbd}`,
           e.format && `Hình thức thi: ${e.format}`,
-          [handIn(e) ? "" : e.kind, e.attempt].filter(Boolean).join(" · "),
+          [e.kind, e.attempt].filter(Boolean).join(" · "),
           online && e.room && `Phòng: ${e.room}`,
           !online && where.address,
           !online && e.note && e.note.replace(/\s*\[Địa chỉ cũ:[^\]]*\]/i, "").trim() !== e.address && `Ghi chú: ${e.note}`,
