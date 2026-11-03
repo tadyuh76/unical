@@ -83,6 +83,22 @@ function ago(ms?: number): string {
   return `${Math.round(min / 1440)} ngày trước`;
 }
 
+// Whether UniCal sits on the toolbar, where its "!" shows when the student needs to sign in again.
+function usePinned(): boolean {
+  const [pinned, setPinned] = useState(true);
+  useEffect(() => {
+    const action = chrome.action as typeof chrome.action & {
+      getUserSettings?: () => Promise<{ isOnToolbar: boolean }>;
+      onUserSettingsChanged?: chrome.events.Event<(s: { isOnToolbar: boolean }) => void>;
+    };
+    action.getUserSettings?.().then((s) => setPinned(s.isOnToolbar)).catch(() => {});
+    const changed = (s: { isOnToolbar: boolean }) => setPinned(s.isOnToolbar);
+    action.onUserSettingsChanged?.addListener(changed);
+    return () => action.onUserSettingsChanged?.removeListener(changed);
+  }, []);
+  return pinned;
+}
+
 function useStoredState(initial: State): State {
   const [state, setState] = useState(initial);
   useEffect(() => {
@@ -95,6 +111,7 @@ function useStoredState(initial: State): State {
 
 export default function App({ initial }: { initial: State }) {
   const s = useStoredState(initial);
+  const pinned = usePinned();
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<"main" | "donate" | "colors">("main");
   const tone = toneOf(s.colors);
@@ -199,7 +216,7 @@ export default function App({ initial }: { initial: State }) {
   if (!connected) {
     return (
       <div
-        className="relative flex w-[360px] select-none flex-col bg-signin bg-cover text-ink"
+        className="relative flex w-[360px] select-none flex-col bg-signin bg-cover bg-no-repeat text-ink"
         style={{ backgroundImage: "url(art/signin.webp)", backgroundPosition: "50% calc(100% + 34px)" }}
       >
         <Header>{menu}</Header>
@@ -256,6 +273,12 @@ export default function App({ initial }: { initial: State }) {
             <span className="absolute bottom-0 left-1/2 h-2 w-14 -translate-x-1/2 rounded-[50%] bg-[#0B7285]/25" />
             <Buddy size={68} look={{ x: 0.55, y: -0.75 }} className="relative block motion-safe:animate-bob" />
           </div>
+          {!pinned && (
+            <p className={`absolute inset-x-3 bottom-3 rounded-2xl bg-raised/95 px-3 py-2 text-center text-[12px] leading-relaxed text-muted backdrop-blur ${LIFT}`}>
+              <span className="block font-medium text-ink">Ghim UniCal để thấy khi cần đăng nhập lại</span>
+              Bấm <ChromeIcon d={PUZZLE} /> ở góc trên, rồi bấm <ChromeIcon d={PIN} /> cạnh UniCal
+            </p>
+          )}
         </div>
       </div>
     );
@@ -692,6 +715,20 @@ function Donate({ onClose }: { onClose: () => void }) {
         <p className="mt-3 text-[12.5px] text-muted">Cảm ơn bạn nhiều 💙</p>
       </div>
     </div>
+  );
+}
+
+// The browser's own toolbar icons (Google's Material Symbols, as Chrome draws them): the extensions puzzle
+// piece, and the pin beside each extension in its menu.
+const PUZZLE =
+  "M200-200h520v-184l45-22q16-8 25.5-22t9.5-32q0-17-9.5-31.5T765-514l-45-21v-185H528l-10-68q-3-22-19.5-37T460-840q-23 0-39.5 15T401-788l-10 68H200v86q56 21 88 68t32 106q0 60-32 107t-88 68v85Zm0 80q-34 0-57-23t-23-57v-152q48 0 84-30.5t36-77.5q0-46-36-76t-84-32v-152q0-33 23.5-56.5T200-800h122q7-51 46-85.5t92-34.5q52 0 91 34.5t47 85.5h122q33 0 56.5 23.5T800-720v134q36 18 58 52t22 74q0 41-22 75t-58 51v134q0 34-23.5 57T720-120H200Zm300-340Z";
+const PIN = "m640-480 80 80v80H520v240l-40 40-40-40v-240H240v-80l80-80v-280h-40v-80h400v80h-40v280Zm-286 80h252l-46-46v-314H400v314l-46 46Zm126 0Z";
+
+function ChromeIcon({ d }: { d: string }) {
+  return (
+    <svg viewBox="0 -960 960 960" aria-hidden className="mx-px inline-block h-[15px] w-[15px] align-[-3px]" fill="#444746">
+      <path d={d} />
+    </svg>
   );
 }
 
