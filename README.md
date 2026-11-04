@@ -28,7 +28,7 @@ Trong Google Calendar sẽ có 3 lịch riêng. Tắt một lịch trong UniCal 
 - Khi bạn đang ở trang đăng ký học phần hay các trang khác của UEH Student, UniCal không đọc gì để không làm chậm trang.
 - Deadline đã nộp được đánh dấu ✓ và tắt nhắc nhở.
 - Lịch thi nhắc lúc 20:00 tối hôm trước và 1 giờ trước giờ thi. Deadline nhắc trước 1 ngày và 2 giờ.
-- Phiên UEH Student hoặc LMS hết hạn: UniCal mở phiên mới qua trang đăng nhập của UEH (nút "Tiếp tục"), không bao giờ thấy hay dùng mật khẩu. Nếu UEH đã đăng xuất hẳn, UniCal nhắc bạn đăng nhập lại; deadline vẫn về qua link lịch riêng của LMS.
+- Phiên UEH Student hoặc LMS hết hạn: nếu UEH cho vào lại luôn thì UniCal đọc tiếp. Nếu trang đăng nhập của UEH cần bạn bấm "Tiếp tục" (có reCAPTCHA) hoặc nhập mật khẩu, UniCal nhắc bạn mở UEH Student một lần; deadline vẫn về qua link lịch riêng của LMS. UniCal không bao giờ thấy hay dùng mật khẩu.
 - Biểu tượng tiện ích (ghim UniCal lên thanh công cụ để thấy) hiện số deadline trong 3 ngày tới, hoặc "!" khi cần đăng nhập lại UEH, kết nối lại Google, lịch chưa cập nhật 3 ngày, hay Google từ chối đồng bộ suốt một ngày.
 - Dùng Apple Calendar, Outlook, Notion Calendar: thêm tài khoản Google vào app, hoặc tải file `.ics` trong UniCal.
 
@@ -72,7 +72,7 @@ Nguồn dữ liệu (đều dùng phiên đăng nhập sẵn có của sinh viê
 | Lịch thi | `/Home/ShowExam?YearStudy=&TermID=` |
 | Sự kiện LMS | Moodle AJAX `core_calendar_get_calendar_monthly_view`, `core_calendar_get_action_events_by_timesort` |
 | Link lịch LMS | `lms.ueh.edu.vn/calendar/export.php` |
-| Mở lại phiên | `loginst.ueh.edu.vn/?returnURL=`, rồi `/continue` |
+| Mở lại phiên | trang đăng nhập của từng site, qua `loginst.ueh.edu.vn` |
 
 Khi UEH đổi giao diện UEH Student hay LMS, chỗ cần sửa gần như luôn nằm trong `src/ueh.ts`.
 

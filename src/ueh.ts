@@ -5,7 +5,6 @@ import type { ClassSession, Exam, LmsEvent, LmsPayload, Plan, PortalPayload, Sit
 
 export const PORTAL = "https://student.ueh.edu.vn";
 export const LMS = "https://lms.ueh.edu.vn";
-const HUB = "https://loginst.ueh.edu.vn"; // UEH's login page for students, shared by both
 
 // The portal or LMS session has lapsed.
 export class Expired extends Error {}
@@ -45,12 +44,16 @@ function addDays(date: string, days: number): string {
 }
 
 // A GET with the student's UEH cookies. Ending up anywhere but the page asked for (the login hub, or
-// Moodle's sign-in page) means the session has lapsed.
+// Moodle's sign-in page) means the session has lapsed. The portal now and then answers one page of a read
+// with a server error and serves it fine a moment later, so a server error is asked again twice.
 async function get(origin: string, path: string, init: RequestInit = {}): Promise<string> {
-  const res = await fetch(origin + path, { credentials: "include", cache: "no-store", ...init });
-  if (!res.url.startsWith(origin) || /\/login\/index\.php|\/Login\//.test(res.url)) throw new Expired();
-  if (!res.ok) throw new Error(`${res.status} ${path}`);
-  return res.text();
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(origin + path, { credentials: "include", cache: "no-store", ...init });
+    if (!res.url.startsWith(origin) || /\/login\/index\.php|\/Login\//.test(res.url)) throw new Expired();
+    if (res.ok) return res.text();
+    if (res.status < 500 || attempt === 2) throw new Error(`${res.status} ${path}`);
+    await new Promise((done) => setTimeout(done, 1500 * (attempt + 1)));
+  }
 }
 
 const roomId = (room: string) => room.replace(/\s*\(.*\)\s*$/, "").trim();
@@ -442,19 +445,15 @@ export async function readLms(plan: Plan): Promise<LmsPayload | null> {
 
 // ---- Signing back in ----
 
-// UEH's login hub remembers the student long after the portal and LMS sessions lapse. Going through it and
-// pressing its "Tiếp tục / Continue" (what the student would click; no password involved) opens a fresh
-// session. False when the hub has forgotten them too, so they need to sign in once themselves.
-// The hub sends the student back to the portal over plain http first, hence the manifest's http permission.
+// A lapsed portal or LMS session: going through the site's UEH sign-in sometimes lets the student straight
+// back in. Otherwise UEH's login page wants them: its "Tiếp tục" is checked by reCAPTCHA, so only the student
+// presses it (or signs in with their password), and the popup asks them to.
+// UEH sends the student back to the portal over plain http first, hence the manifest's http permission.
 export async function renew(site: Site): Promise<boolean> {
   const origin = site === "portal" ? PORTAL : LMS;
   const entry = site === "portal" ? "/Login/LoginUEH" : "/ueh-login/student.php";
-  const back = (url: string) => url.startsWith(origin) && !/\/login\/index\.php|\/Login\//.test(url);
-  const hub = await fetch(origin + entry, { credentials: "include", cache: "no-store" });
-  if (back(hub.url)) return true;
-  if (!hub.url.startsWith(HUB) || !(await hub.text()).includes("onclickContinue")) return false;
-  const done = await fetch(`${HUB}/continue`, { credentials: "include", cache: "no-store" });
-  return back(done.url);
+  const res = await fetch(origin + entry, { credentials: "include", cache: "no-store" });
+  return res.url.startsWith(origin) && !/\/login\/index\.php|\/Login\//.test(res.url);
 }
 
 // Reads one site; when its session has lapsed, signs back in through the hub and reads again.
