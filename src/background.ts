@@ -25,7 +25,7 @@ import {
   type CalendarState,
   type State,
 } from "@/store";
-import { REGISTERING } from "@/ueh";
+import { LMS, PORTAL, REGISTERING } from "@/ueh";
 
 const API = "https://www.googleapis.com/calendar/v3";
 const CLIENT_ID =
@@ -799,10 +799,9 @@ async function badge() {
   if (!account || problem === "auth" || problem === "scope") {
     return warn(account ? "Kết nối lại Google Calendar" : "Kết nối Google Calendar");
   }
-  const sites = signInNeeded({ login, settings, feed });
+  const sites = signInNeeded({ login, settings, feed, seen });
   if (sites.length) {
-    const again = Object.values(seen).some(Boolean) ? "Đăng nhập lại" : "Đăng nhập";
-    return warn(`${again} ${sites.join(" và ")}`);
+    return warn(Object.values(seen).some(Boolean) ? "UEH cần bạn bấm Tiếp tục" : `Đăng nhập ${sites.join(" và ")}`);
   }
   const now = Date.now();
   // Problems that usually sort themselves out only get a sign once they've lasted: Google refusing changes
@@ -825,7 +824,7 @@ async function badge() {
 
 // ---- Wiring ----
 
-async function handle(message: Message): Promise<unknown> {
+async function handle(message: Message, sender: chrome.runtime.MessageSender): Promise<unknown> {
   switch (message.type) {
     case "PLAN":
       return plan(VISIT);
@@ -833,14 +832,16 @@ async function handle(message: Message): Promise<unknown> {
       return task(async () => {
         await mergePortal(message.payload);
         await signedIn("portal");
-        return runSync();
+        return finishReentry(sender, await runSync());
       });
     case "LMS":
       return task(async () => {
         await mergeLms(message.payload);
         await signedIn("lms");
-        return runSync();
+        return finishReentry(sender, await runSync());
       });
+    case "REENTER":
+      return reenter();
     case "CONNECT":
       return connect();
     case "DISCONNECT":
@@ -880,9 +881,28 @@ chrome.runtime.onMessage.addListener((message: Message, sender, respond) => {
   const own = sender.url?.startsWith(chrome.runtime.getURL(""));
   if (!own && !(FROM_PAGES.has(message.type) && UEH.test(sender.url ?? ""))) return false;
   if (message.type === "READ") return false; // for the hidden reading page
-  handle(message).then(respond, () => respond(undefined));
+  handle(message, sender).then(respond, () => respond(undefined));
   return true;
 });
+
+// The popup's "Mở UEH": opens the page where UEH wants the student back (one click on its "Tiếp tục", or
+// their password the first time). When they land back and UniCal has read the page, that tab closes itself.
+async function reenter() {
+  const { login, settings, feed, seen } = await load();
+  const lms = signInNeeded({ login, settings, feed, seen })[0] === "LMS";
+  const tab = await chrome.tabs.create({ url: lms ? `${LMS}/my/` : `${PORTAL}/Home/Schedules`, active: true });
+  await chrome.storage.session.set({ reentry: tab.id });
+  return true;
+}
+
+async function finishReentry(sender: chrome.runtime.MessageSender, report: SyncReport): Promise<SyncReport> {
+  const { reentry } = await chrome.storage.session.get("reentry");
+  const tab = sender.tab?.id;
+  if (!tab || tab !== reentry) return report;
+  await chrome.storage.session.remove("reentry");
+  setTimeout(() => chrome.tabs.remove(tab).catch(() => {}), 2500);
+  return { ...report, closing: true };
+}
 
 // The student just read a site in the open page, so UEH has them signed in there again.
 async function signedIn(site: Site) {

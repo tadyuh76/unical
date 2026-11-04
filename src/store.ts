@@ -73,11 +73,13 @@ export const atLocal = (local: string) => Date.parse(`${local}:00+07:00`);
 export const toLocal = (ms: number) =>
   new Date(ms + 7 * 3600_000).toISOString().slice(0, 16);
 
-// UEH signed the student out of a site completely: only they can sign back in. Deadlines keep coming
-// through the private LMS link while it works, so the LMS only matters without it.
-export function signInNeeded({ login, settings, feed }: Pick<State, "login" | "settings" | "feed">): string[] {
+// The UEH sites worth asking the student to open. UEH Student signs students out after a short idle time and
+// only they can sign back in (its "Tiếp tục" is checked by reCAPTCHA), so UniCal reads whenever they open the
+// site anyway and asks only once what that site feeds hasn't been read for a day.
+export function signInNeeded({ login, settings, feed, seen }: Pick<State, "login" | "settings" | "feed" | "seen">): string[] {
+  const stale = (...kinds: Source[]) => kinds.some((k) => settings[k] && Date.now() - (seen[k] ?? 0) > 86_400_000);
   return [
-    login.portal && (settings.classes || settings.exams) && "UEH Student",
-    login.lms && settings.deadlines && !feed && "LMS",
+    login.portal && stale("classes", "exams") && "UEH Student",
+    login.lms && settings.deadlines && !feed && stale("deadlines") && "LMS",
   ].filter((x): x is string => Boolean(x));
 }

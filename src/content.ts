@@ -54,7 +54,11 @@ function toast(message: string, action?: { label: string; run: () => void }) {
   setTimeout(hide, action ? 12000 : 5000);
 }
 
-function report({ changed, connected, nudge, lost }: SyncReport) {
+function report({ changed, connected, nudge, lost, closing }: SyncReport) {
+  if (closing) {
+    toast("Xong rồi, lịch đã cập nhật");
+    return;
+  }
   if (!connected) {
     if (nudge) {
       toast(lost ? "Google Calendar đã ngưng cập nhật" : "Lịch của bạn đã sẵn sàng", {

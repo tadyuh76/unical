@@ -284,7 +284,7 @@ export default function App({ initial }: { initial: State }) {
     );
   }
 
-  const signIn = signInNeeded(s).map((name) => ({ name, url: name === "LMS" ? LMS : PORTAL }));
+  const signIn = signInNeeded(s);
   const everRead = Object.values(s.seen).some(Boolean);
   const read = (id: Source) =>
     id === "deadlines" ? Math.max(s.seen.deadlines ?? 0, s.seen.feed ?? 0) : s.seen[id] ?? 0;
@@ -336,17 +336,17 @@ export default function App({ initial }: { initial: State }) {
           </a>
         )}
         {signIn.length > 0 && (
-          <p className="mb-2 rounded-2xl bg-warn-bg px-3 py-2.5 text-[12.5px] leading-relaxed text-warn-ink">
-            {everRead ? "Đăng nhập lại" : "Đăng nhập"}{" "}
-            {signIn.map((site, i) => (
-              <span key={site.name}>
-                {i > 0 && " và "}
-                <a href={site.url} target="_blank" className="font-semibold underline underline-offset-2">
-                  {site.name}
-                </a>
-              </span>
-            ))}
-          </p>
+          <div className="mb-2 flex items-center gap-2 rounded-2xl bg-warn-bg py-1.5 pl-3 pr-1.5 text-[12.5px] leading-snug text-warn-ink">
+            <span className="min-w-0 flex-1">
+              {everRead ? "UEH cần bạn bấm “Tiếp tục”" : `Đăng nhập ${signIn.join(" và ")} một lần`}
+            </span>
+            <button
+              onClick={() => send({ type: "REENTER" }).finally(() => window.close())}
+              className="h-8 flex-none rounded-full bg-ink px-3.5 text-[12.5px] font-medium text-page transition hover:bg-ink/85 active:scale-[0.97]"
+            >
+              Mở UEH
+            </button>
+          </div>
         )}
 
         {upcoming.length > 0 ? (
