@@ -21,11 +21,12 @@ import {
   atLocal,
   load,
   save,
-  signInNeeded,
+  lapsed,
+  SITE_NAMES,
   type CalendarState,
   type State,
 } from "@/store";
-import { LMS, PORTAL, REGISTERING } from "@/ueh";
+import { ENTRY, HUB, REGISTERING } from "@/ueh";
 
 const API = "https://www.googleapis.com/calendar/v3";
 const CLIENT_ID =
@@ -686,6 +687,7 @@ async function refreshInBackground(everything = false) {
     return await refresh(everything, Boolean(account), settings, login);
   } finally {
     await save({ busy: 0 });
+    await enterQuietly(everything).catch(() => {});
   }
 }
 
@@ -799,7 +801,7 @@ async function badge() {
   if (!account || problem === "auth" || problem === "scope") {
     return warn(account ? "Kết nối lại Google Calendar" : "Kết nối Google Calendar");
   }
-  const sites = signInNeeded({ login, settings, feed, seen });
+  const sites = lapsed({ login, settings, feed, seen }).map((site) => SITE_NAMES[site]);
   if (sites.length) {
     return warn(Object.values(seen).some(Boolean) ? "UEH cần bạn bấm Tiếp tục" : `Đăng nhập ${sites.join(" và ")}`);
   }
@@ -832,16 +834,20 @@ async function handle(message: Message, sender: chrome.runtime.MessageSender): P
       return task(async () => {
         await mergePortal(message.payload);
         await signedIn("portal");
-        return finishReentry(sender, await runSync());
+        return finishEntry(sender, "portal", await runSync());
       });
     case "LMS":
       return task(async () => {
         await mergeLms(message.payload);
         await signedIn("lms");
-        return finishReentry(sender, await runSync());
+        return finishEntry(sender, "lms", await runSync());
       });
-    case "REENTER":
-      return reenter();
+    case "REENTER": {
+      const sites = lapsed(await load());
+      return enter(sites.length ? sites : ["portal"], false);
+    }
+    case "HUB":
+      return hubPage(sender, message.account);
     case "CONNECT":
       return connect();
     case "DISCONNECT":
@@ -873,9 +879,10 @@ async function handle(message: Message, sender: chrome.runtime.MessageSender): P
 chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" }).catch(() => {});
 chrome.storage.sync.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" }).catch(() => {});
 
-// UEH pages may only hand over what they read and ask for the popup; everything else comes from UniCal's own pages.
-const FROM_PAGES = new Set<Message["type"]>(["PLAN", "PORTAL", "LMS", "OPEN_POPUP"]);
-const UEH = /^https:\/\/(student|lms)\.ueh\.edu\.vn\//;
+// UEH pages may only hand over what they read, say what UEH's login page shows, and ask for the popup;
+// everything else comes from UniCal's own pages.
+const FROM_PAGES = new Set<Message["type"]>(["PLAN", "PORTAL", "LMS", "HUB", "OPEN_POPUP"]);
+const UEH = /^https:\/\/(student|lms|loginst)\.ueh\.edu\.vn\//;
 chrome.runtime.onMessage.addListener((message: Message, sender, respond) => {
   if (sender.id !== chrome.runtime.id) return false;
   const own = sender.url?.startsWith(chrome.runtime.getURL(""));
@@ -885,24 +892,89 @@ chrome.runtime.onMessage.addListener((message: Message, sender, respond) => {
   return true;
 });
 
-// The popup's "Mở UEH": opens the page where UEH wants the student back (one click on its "Tiếp tục", or
-// their password the first time). When they land back and UniCal has read the page, that tab closes itself.
-async function reenter() {
-  const { login, settings, feed, seen } = await load();
-  const lms = signInNeeded({ login, settings, feed, seen })[0] === "LMS";
-  const tab = await chrome.tabs.create({ url: lms ? `${LMS}/my/` : `${PORTAL}/Home/Schedules`, active: true });
-  await chrome.storage.session.set({ reentry: tab.id });
+// ---- Getting back in to UEH ----
+// UEH Student signs students out after a short idle time. Getting back in takes UEH's login page, which shows
+// the signed-in account and one "Tiếp tục" checked by UEH's own bot check, and can't be opened inside another
+// page. So UniCal opens the site's UEH sign-in in a tab; the script there (content.ts) presses "Tiếp tục" for
+// the student, UEH sends the tab back to the site, the site is read like any visit, and the tab closes.
+// On its own UniCal does this behind the student's tabs, at most every few hours; the popup's "Mở UEH" does it
+// in front. Whatever more UEH asks for (a password, a checkbox) is left to the student.
+
+interface Entry {
+  tab: number;
+  sites: Site[]; // still to get back in to, in order: UEH's login page sends people back one site at a time
+  quiet: boolean; // opened by UniCal on its own, behind the student's tabs
+  pressed: boolean; // "Tiếp tục" was pressed for the current site
+}
+
+const QUIET_EVERY = 6 * HOUR;
+const entry = async () => (await chrome.storage.session.get("entry")).entry as Entry | undefined;
+
+async function enter(sites: Site[], quiet: boolean): Promise<boolean> {
+  if (quiet && !(await chrome.windows.getAll({ windowTypes: ["normal"] })).length) return false;
+  const tab = await chrome.tabs.create({ url: ENTRY[sites[0]!], active: !quiet });
+  if (!tab.id) return false;
+  await chrome.storage.session.set({ entry: { tab: tab.id, sites, quiet, pressed: false } satisfies Entry });
+  if (quiet) chrome.alarms.create("entry", { delayInMinutes: 2 });
   return true;
 }
 
-async function finishReentry(sender: chrome.runtime.MessageSender, report: SyncReport): Promise<SyncReport> {
-  const { reentry } = await chrome.storage.session.get("reentry");
-  const tab = sender.tab?.id;
-  if (!tab || tab !== reentry) return report;
-  await chrome.storage.session.remove("reentry");
-  setTimeout(() => chrome.tabs.remove(tab).catch(() => {}), 2500);
+// After a background read: the sites that signed the student out and haven't been read for a few hours
+// (right away when they pressed sync). Never while they're on UEH's login page themselves, where opening
+// another sign-in would change where their "Tiếp tục" takes them, nor while they're registering for courses.
+async function enterQuietly(now: boolean) {
+  const state = await load();
+  if (!state.account || !state.who.portal || (!now && Date.now() - state.entered < QUIET_EVERY)) return;
+  const sites = lapsed(state, now ? 0 : QUIET_EVERY);
+  if (!sites.length || (await entry())) return;
+  if ((await chrome.tabs.query({ url: `${HUB}/*` }).catch(() => [])).length) return;
+  if (sites.includes("portal") && (await registering())) return;
+  if (await enter(sites, true)) await save({ entered: Date.now() });
+}
+
+// UEH's login page loaded in a tab. Only in UniCal's own tab, only once per site, and only for the student
+// whose UEH data UniCal keeps, does "Tiếp tục" get pressed. A quiet tab where UEH wants more closes again.
+async function hubPage(sender: chrome.runtime.MessageSender, account: string): Promise<boolean> {
+  const current = await entry();
+  if (!current || sender.tab?.id !== current.tab) return false;
+  const { who } = await load();
+  if (account && !current.pressed && who.portal && account.includes(who.portal)) {
+    await chrome.storage.session.set({ entry: { ...current, pressed: true } });
+    return true;
+  }
+  if (current.quiet) await endEntry(current);
+  return false;
+}
+
+// A site was read in UniCal's tab: on to the next site, or done.
+async function finishEntry(sender: chrome.runtime.MessageSender, site: Site, report: SyncReport): Promise<SyncReport> {
+  const current = await entry();
+  if (!current || sender.tab?.id !== current.tab) return report;
+  const rest = current.sites.filter((s) => s !== site);
+  if (rest.length) {
+    await chrome.storage.session.set({ entry: { ...current, sites: rest, pressed: false } });
+    await chrome.tabs.update(current.tab, { url: ENTRY[rest[0]!] }).catch(() => {});
+    return report;
+  }
+  if (current.quiet) {
+    await endEntry(current);
+    return report;
+  }
+  await chrome.storage.session.remove("entry");
+  setTimeout(() => chrome.tabs.remove(current.tab).catch(() => {}), 2500);
   return { ...report, closing: true };
 }
+
+async function endEntry(current: Entry) {
+  await chrome.storage.session.remove("entry");
+  chrome.alarms.clear("entry").catch(() => {});
+  if (current.quiet) await chrome.tabs.remove(current.tab).catch(() => {});
+}
+
+chrome.tabs.onRemoved.addListener(async (tab) => {
+  const current = await entry();
+  if (current?.tab === tab) await endEntry(current);
+});
 
 // The student just read a site in the open page, so UEH has them signed in there again.
 async function signedIn(site: Site) {
@@ -910,7 +982,11 @@ async function signedIn(site: Site) {
   if (login[site]) await save({ login: { ...login, [site]: false } });
 }
 
-chrome.alarms.onAlarm.addListener(() => task(() => refreshInBackground()));
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name !== "entry") return task(() => refreshInBackground());
+  const current = await entry(); // a quiet tab that hasn't got anywhere in two minutes
+  if (current?.quiet) await endEntry(current);
+});
 chrome.runtime.onStartup.addListener(() => task(() => refreshInBackground()));
 
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {

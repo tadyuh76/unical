@@ -1,6 +1,6 @@
 import { classColors, COLORS, colorHex, courseName, handIn, isOff, onlineExam, roomLabel, roomText } from "@/calendar";
 import { Buddy } from "@/buddy";
-import { atLocal, load, signInNeeded, type Colors, type State } from "@/store";
+import { atLocal, lapsed, load, SITE_NAMES, type Colors, type State } from "@/store";
 import type { Message, Source } from "@/types";
 import {
   MortarboardRegular,
@@ -284,7 +284,7 @@ export default function App({ initial }: { initial: State }) {
     );
   }
 
-  const signIn = signInNeeded(s);
+  const signIn = lapsed(s).map((site) => SITE_NAMES[site]);
   const everRead = Object.values(s.seen).some(Boolean);
   const read = (id: Source) =>
     id === "deadlines" ? Math.max(s.seen.deadlines ?? 0, s.seen.feed ?? 0) : s.seen[id] ?? 0;

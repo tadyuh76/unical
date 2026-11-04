@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "UniCal",
-  "version": "2.0.13",
+  "version": "2.0.14",
   "description": "Lịch học, lịch thi UEH và deadline LMS tự vào Google Calendar. Trường đổi gì, lịch đổi theo.",
   "homepage_url": "https://unical.tadyuh.dev",
   "action": {
@@ -36,7 +36,6 @@
   ],
   "host_permissions": [
     "https://student.ueh.edu.vn/*",
-    "http://student.ueh.edu.vn/*",
     "https://lms.ueh.edu.vn/*",
     "https://loginst.ueh.edu.vn/*",
     "https://www.googleapis.com/*"
@@ -45,7 +44,8 @@
     {
       "matches": [
         "https://student.ueh.edu.vn/*",
-        "https://lms.ueh.edu.vn/*"
+        "https://lms.ueh.edu.vn/*",
+        "https://loginst.ueh.edu.vn/*"
       ],
       "js": [
         "content.js"

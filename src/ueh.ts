@@ -43,13 +43,15 @@ function addDays(date: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-// A GET with the student's UEH cookies. Ending up anywhere but the page asked for (the login hub, or
-// Moodle's sign-in page) means the session has lapsed. The portal now and then answers one page of a read
-// with a server error and serves it fine a moment later, so a server error is asked again twice.
+// A GET with the student's UEH cookies. Signed in, every page UniCal reads answers straight away; being sent
+// elsewhere means the session has lapsed. The redirect isn't followed: it leads to UEH's login page, which
+// remembers the last site that sent someone there, and a student signing in to another UEH site right then
+// must still end up where they meant to go. The portal now and then answers one page of a read with a server
+// error and serves it fine a moment later, so a server error is asked again twice.
 async function get(origin: string, path: string, init: RequestInit = {}): Promise<string> {
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch(origin + path, { credentials: "include", cache: "no-store", ...init });
-    if (!res.url.startsWith(origin) || /\/login\/index\.php|\/Login\//.test(res.url)) throw new Expired();
+    const res = await fetch(origin + path, { credentials: "include", cache: "no-store", redirect: "manual", ...init });
+    if (res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400)) throw new Expired();
     if (res.ok) return res.text();
     if (res.status < 500 || attempt === 2) throw new Error(`${res.status} ${path}`);
     await new Promise((done) => setTimeout(done, 1500 * (attempt + 1)));
@@ -445,28 +447,19 @@ export async function readLms(plan: Plan): Promise<LmsPayload | null> {
 
 // ---- Signing back in ----
 
-// A lapsed portal or LMS session: going through the site's UEH sign-in sometimes lets the student straight
-// back in. Otherwise UEH's login page wants them: its "Tiếp tục" is checked by reCAPTCHA, so only the student
-// presses it (or signs in with their password), and the popup asks them to.
-// UEH sends the student back to the portal over plain http first, hence the manifest's http permission.
-export async function renew(site: Site): Promise<boolean> {
-  const origin = site === "portal" ? PORTAL : LMS;
-  const entry = site === "portal" ? "/Login/LoginUEH" : "/ueh-login/student.php";
-  const res = await fetch(origin + entry, { credentials: "include", cache: "no-store" });
-  return res.url.startsWith(origin) && !/\/login\/index\.php|\/Login\//.test(res.url);
-}
+// Where each site starts its UEH sign-in. UEH's login page (HUB) then shows the signed-in account with one
+// "Tiếp tục", checked by UEH's own bot check, and sends the student back to the site that asked.
+export const HUB = "https://loginst.ueh.edu.vn";
+export const ENTRY: Record<Site, string> = {
+  portal: `${PORTAL}/Login/LoginUEH`,
+  lms: `${LMS}/ueh-login/student.php`,
+};
 
-// Reads one site; when its session has lapsed, signs back in through the hub and reads again.
+// Reads one site. A lapsed session is reported, not renewed: getting back in takes a real page of UEH's
+// login, in a tab (background.ts).
 export async function readSite(site: Site, plan: Plan): Promise<{ payload: PortalPayload | LmsPayload | null } | { login: true }> {
-  const read = () => (site === "portal" ? readPortal(plan) : readLms(plan));
   try {
-    return { payload: await read() };
-  } catch (err) {
-    if (!(err instanceof Expired)) throw err;
-  }
-  if (!(await renew(site))) return { login: true };
-  try {
-    return { payload: await read() };
+    return { payload: await (site === "portal" ? readPortal(plan) : readLms(plan)) };
   } catch (err) {
     if (err instanceof Expired) return { login: true };
     throw err;

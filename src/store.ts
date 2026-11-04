@@ -38,6 +38,7 @@ export interface State {
   doubt: Record<string, number>; // "classes|2026HKC" -> when a read first came back empty for a term with things ahead
   colors: Colors;
   oldCalendars: { id: string; name: string }[]; // calendars UniCal 1.x made that are still in Google
+  entered: number; // when UniCal last got the student back in to UEH on its own
 }
 
 export const DEFAULTS: State = {
@@ -57,6 +58,7 @@ export const DEFAULTS: State = {
   doubt: {},
   colors: { classes: "7", exams: "11", deadlines: "5" }, // classes blue (Lông công), exams red (Cà chua), deadlines yellow (Chuối)
   oldCalendars: [],
+  entered: 0,
 };
 
 export async function load(): Promise<State> {
@@ -73,13 +75,18 @@ export const atLocal = (local: string) => Date.parse(`${local}:00+07:00`);
 export const toLocal = (ms: number) =>
   new Date(ms + 7 * 3600_000).toISOString().slice(0, 16);
 
-// The UEH sites worth asking the student to open. UEH Student signs students out after a short idle time and
-// only they can sign back in (its "Tiếp tục" is checked by reCAPTCHA), so UniCal reads whenever they open the
-// site anyway and asks only once what that site feeds hasn't been read for a day.
-export function signInNeeded({ login, settings, feed, seen }: Pick<State, "login" | "settings" | "feed" | "seen">): string[] {
-  const stale = (...kinds: Source[]) => kinds.some((k) => settings[k] && Date.now() - (seen[k] ?? 0) > 86_400_000);
+export const SITE_NAMES: Record<Site, string> = { portal: "UEH Student", lms: "LMS" };
+
+// The UEH sites that signed the student out while what they feed hasn't been read for `age`. UEH Student
+// signs students out after a short idle time, so UniCal gets back in every few hours (background.ts) and
+// asks the student only once a site has been behind for a day.
+export function lapsed(
+  { login, settings, feed, seen }: Pick<State, "login" | "settings" | "feed" | "seen">,
+  age = 86_400_000
+): Site[] {
+  const old = (...kinds: Source[]) => kinds.some((k) => settings[k] && Date.now() - (seen[k] ?? 0) > age);
   return [
-    login.portal && stale("classes", "exams") && "UEH Student",
-    login.lms && settings.deadlines && !feed && stale("deadlines") && "LMS",
-  ].filter((x): x is string => Boolean(x));
+    login.portal && old("classes", "exams") && "portal",
+    login.lms && settings.deadlines && !feed && old("deadlines") && "lms",
+  ].filter((x): x is Site => Boolean(x));
 }

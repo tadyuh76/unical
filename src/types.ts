@@ -94,7 +94,7 @@ export interface SyncReport {
   connected: boolean;
   nudge: boolean; // ask the student to connect Google Calendar (again, when `lost`)
   lost?: boolean; // Google access ended: the calendar has stopped updating
-  closing?: boolean; // the tab UniCal opened for the student to sign back in is done and closes itself
+  closing?: boolean; // the tab UniCal opened to get back in to UEH is done and closes itself
 }
 
 // What a background read of one site comes back with: what it read, or that UEH wants the student to sign in.
@@ -112,5 +112,6 @@ export type Message =
   | { type: "COLORS"; colors: Colors }
   | { type: "OLD" }
   | { type: "REENTER" }
+  | { type: "HUB"; account: string } // UEH's login page loaded; `account` is set when it offers "Tiếp tục"
   | { type: "ICS" }
   | { type: "OPEN_POPUP" };

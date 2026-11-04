@@ -1,6 +1,7 @@
 // Runs on the UEH student portal and LMS. When the student opens either one, reads their latest timetable,
 // exams and LMS deadlines right away (ueh.ts) and hands them to the background worker, which keeps Google
-// Calendar in sync. Bundled as a single classic script.
+// Calendar in sync. Also runs on UEH's login page, for the tabs UniCal opens to get back in. Bundled as a
+// single classic script.
 import type { LmsPayload, Message, Plan, PortalPayload, SyncReport } from "@/types";
 import { CALM, readLms, readPortal } from "@/ueh";
 
@@ -78,7 +79,23 @@ function report({ changed, connected, nudge, lost, closing }: SyncReport) {
 
 // ---- Entry ----
 
+// UEH's login page. In a tab UniCal opened to get back in (background.ts), its "Tiếp tục" is pressed for the
+// student once UEH's bot check has loaded, so the check runs exactly as when they press it. The page's account
+// goes along only when it offers that one click; anything else there (a password, a checkbox) is theirs.
+async function hub() {
+  const button = document.querySelector<HTMLButtonElement>("#frmCaptcha #btnCaptcha");
+  const offered = Boolean(button && !button.disabled && document.getElementById("recaptchaV3"));
+  const account = offered ? (document.body.innerText.match(/[\w.+-]+@[\w.-]*ueh\.edu\.vn/i)?.[0] ?? "") : "";
+  if (!(await send<boolean>({ type: "HUB", account }))) return;
+  for (let waited = 0; !document.querySelector(".grecaptcha-badge iframe") && waited < 10_000; waited += 250) {
+    await new Promise((done) => setTimeout(done, 250));
+  }
+  await new Promise((done) => setTimeout(done, 1200));
+  button!.click();
+}
+
 async function run() {
+  if (location.hostname === "loginst.ueh.edu.vn") return hub();
   const plan = await send<Plan>({ type: "PLAN" });
   let result: SyncReport | undefined;
 
